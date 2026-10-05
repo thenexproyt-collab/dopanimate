@@ -318,7 +318,7 @@ const RELICS = [
   { id: 'heal', rar: 0, icon: '🩹', name: 'Vendaje', desc: 'Cura 1 corazón.', consumable: true, avail: () => run.hp < run.maxHp, apply() { run.hp = Math.min(run.maxHp, run.hp + 1); } },
   { id: 'battery', rar: 0, icon: '🔋', name: 'Batería', desc: '+1 tiro, +1 munición y +2 bolas en los bonus.', apply() { run.maxCharges++; } },
   { id: 'cap', rar: 0, icon: '⚡', name: 'Condensador', desc: 'Los tiros se recargan un 25% más rápido.', apply() { run.rechargeMul *= 0.75; } },
-  { id: 'lever', rar: 0, icon: '🔧', name: 'Palanca', desc: 'Huecos y pala un 15% más anchos, bolas más gordas.', apply() { run.gapMul *= 1.15; } },
+  { id: 'lever', rar: 0, icon: '🔧', name: 'Palanca', desc: 'Huecos un 15% más anchos y bolas más gordas.', apply() { run.gapMul *= 1.15; } },
   { id: 'hourglass', rar: 0, icon: '⏳', name: 'Reloj de arena', desc: '+20% de tiempo y los bichos van un 10% más lentos.', apply() { run.timeMul *= 1.2; run.enemyMul *= 0.9; } },
   { id: 'crystal', rar: 1, icon: '💎', name: 'Corazón de cristal', desc: '+1 corazón máximo y te cura 1.', apply() { run.maxHp++; run.hp++; } },
   { id: 'twin', rar: 1, icon: '⚪', name: 'Gemela', desc: '+1 bola en todos los juegos.', apply() { run.balls++; } },
@@ -328,9 +328,9 @@ const RELICS = [
   { id: 'magnet', rar: 1, icon: '🧲', name: 'Imán', desc: 'Tus bolas buscan objetivos y el tiro perfecto es más fácil.' },
   { id: 'prism', rar: 1, icon: '🌈', name: 'Prisma', desc: '15% de que cada destrucción suelte una bola extra.' },
   { id: 'chrono', rar: 2, icon: '⏱️', name: 'Cronógrafo', desc: 'Cada destrucción te da tiempo extra.' },
-  { id: 'drill', rar: 2, icon: '🔩', name: 'Taladro', desc: 'Cada 4º disparo o golpe de pala es perforante.' },
+  { id: 'drill', rar: 2, icon: '🔩', name: 'Taladro', desc: 'Cada 4º disparo es perforante.' },
   { id: 'fang', rar: 2, icon: '🦷', name: 'Colmillo', desc: 'Destruir cosas acaba curándote corazones.' },
-  { id: 'gauntlet', rar: 2, icon: '🥊', name: 'Guantelete', desc: 'Tus disparos rompen pinchos y tu pala devuelve proyectiles.' },
+  { id: 'gauntlet', rar: 2, icon: '🥊', name: 'Guantelete', desc: 'Tus disparos rompen los pinchos.' },
   { id: 'kaleido', rar: 2, icon: '🔮', name: 'Caleidoscopio', desc: 'Puntos x1,5. El mundo se vuelve todavía más raro.', apply() { run.scoreMul *= 1.5; run.tripBonus += 2; } },
   { id: 'veil', rar: 3, icon: '👻', name: 'Velo', desc: 'Esquivas 1 de cada 2 golpes (no el del tiempo).', unique: true },
   { id: 'echo', rar: 3, icon: '🔊', name: 'Eco', desc: 'Cada disparo sale doble.', unique: true },
@@ -338,7 +338,7 @@ const RELICS = [
   { id: 'blackhole', rar: 3, icon: '🕳️', name: 'Agujero negro', desc: 'Cada 15 s el centro se traga lo que tenga cerca.', unique: true },
   { id: 'pact_blood', rar: -1, icon: '🩸', name: 'Pacto de sangre', desc: '+2 tiros y recarga +30%… pero −1 corazón máximo.', avail: () => run.maxHp > 1,
     apply() { run.maxCharges += 2; run.rechargeMul *= 0.7; run.maxHp--; run.hp = Math.min(run.hp, run.maxHp); } },
-  { id: 'pact_time', rar: -1, icon: '⌛', name: 'Pacto del tiempo', desc: 'Huecos y pala +30%… pero −25% de tiempo.', apply() { run.gapMul *= 1.3; run.timeMul *= 0.75; } },
+  { id: 'pact_time', rar: -1, icon: '⌛', name: 'Pacto del tiempo', desc: 'Huecos +30%… pero −25% de tiempo.', apply() { run.gapMul *= 1.3; run.timeMul *= 0.75; } },
   { id: 'pact_glass', rar: -1, icon: '🪞', name: 'Pacto de cristal', desc: 'Puntos x2 para siempre… pero pierdes 1 corazón ahora.', avail: () => run.hp > 1, apply() { run.scoreMul *= 2; run.hp--; } },
 ];
 const relic = id => RELICS.find(r => r.id === id);
@@ -382,25 +382,27 @@ function resize() {
   W = r.width; H = r.height;
   canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
   darkC.width = canvas.width; darkC.height = canvas.height;
-  viewScale = Math.min(W, H - 60) / 2 / WORLD_R;
+  viewScale = Math.max(0.12, Math.min(W, H - 60) / 2 / WORLD_R);
 }
 
 // ---------------------------------------------------------------- estructura de la partida
 // Cada ciclo de 6 pisos: 4 juegos distintos al azar + jefe + tragaperras. Casi cada piso es OTRO juego.
-const POOL = ['rings', 'breakout', 'swarm', 'multiply', 'merge', 'chain', 'hole'];
-const BOSS_MODES = ['rings', 'breakout', 'swarm'];
-const DEMO_ORDER = ['rings', 'multiply', 'breakout', 'merge', 'swarm', 'chain', 'hole', 'plinko'];
+// Los anillos son el juego favorito: salen en 2 de cada 4 pisos normales y en la mayoría de jefes.
+// (El rompebloques se quitó: sigue en el código pero ya no sale.)
+const POOL = ['swarm', 'multiply', 'merge', 'chain', 'hole'];
+const BOSS_MODES = ['rings', 'rings', 'swarm'];
+const DEMO_ORDER = ['rings', 'multiply', 'rings', 'merge', 'swarm', 'chain', 'hole', 'plinko'];
 function modeAt(s) {
   if (!run.sched) run.sched = [];
   while (run.sched.length <= s) {
     const i = run.sched.length, k = i % 6;
     let m;
     if (run.demo) m = DEMO_ORDER[i % DEMO_ORDER.length];
-    else if (i === 0) m = 'rings';
+    else if (k === 0 || k === 2) m = 'rings';
     else if (k === 4) m = pick(BOSS_MODES);
     else if (k === 5) m = 'plinko';
     else {
-      const recent = run.sched.slice(-3);
+      const recent = run.sched.slice(-4);
       m = pick(POOL.filter(x => !recent.includes(x)));
     }
     run.sched.push(m);
@@ -1047,7 +1049,7 @@ const RINGS = {
   hint: 'toca el circuito exterior para disparar · apunta a la flecha blanca',
   bossTag: 'atraviésalo varias veces',
   build(info) {
-    if (info.boss) buildRingBoss(info); else buildRingFloor(1 + info.lvl * 2);
+    if (info.boss) buildRingBoss(info); else buildRingFloor(1 + Math.floor(info.s * 0.5));
     run.charges = run.maxCharges + (cursed('drought') ? 1 : 0);
     for (let i = 0; i < run.balls; i++) balls.push(ringBall(i));
   },
@@ -1970,6 +1972,7 @@ function drawBalls() {
 }
 
 function render() {
+  if (W <= 0 || H <= 0 || !canvas.width || !darkC.width) return;   // ventana oculta o sin tamaño
   const I = tripI();
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   ctx.globalCompositeOperation = 'source-over';
@@ -2023,7 +2026,7 @@ function render() {
     darkCtx.fillStyle = 'rgba(2,2,6,0.96)';
     darkCtx.fillRect(0, 0, darkC.width, darkC.height);
     darkCtx.globalCompositeOperation = 'destination-out';
-    const rad = 85 * viewS() * DPR;
+    const rad = Math.max(2, 85 * viewS() * DPR);
     for (const b of balls) {
       const [x, y] = worldToScreen(b.x, b.y);
       const g = darkCtx.createRadialGradient(x * DPR, y * DPR, rad * 0.3, x * DPR, y * DPR, rad);
@@ -2192,7 +2195,7 @@ function showMenu() {
   game.demoIdx = 0; game.demoT = 7;
   startStage(0);
   game.displayScore = 0;
-  const seen = meta.seen.length ? `${meta.seen.length}/8` : '';
+  const nSeen = meta.seen.filter(x => x !== 'breakout').length, seen = nSeen ? `${nSeen}/7` : '';
   $('#menuStats').innerHTML = meta.runs ? statBox(meta.best, 'MEJOR PISO') + statBox(fmt(meta.bestScore), 'MEJOR PUNTUACIÓN') + statBox(meta.runs, 'PARTIDAS') + (seen ? statBox(seen, 'JUEGOS VISTOS') : '') : '';
   renderMeta(); renderRelics();
   $('#menu').classList.add('on');

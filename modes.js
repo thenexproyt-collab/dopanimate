@@ -3,6 +3,26 @@
 // Se cargan antes que game.js y usan sus utilidades en tiempo de juego (M, run, ctx, Sfx, spark, floatText,
 // addScore, bumpCombo, dopaBoost, damage, floorClear...).
 
+// Los emojis se dibujan UNA vez en una imagen y luego se estampan: dibujar texto emoji cada fotograma
+// costaba ~70 ms en el Agujero (13 fps).
+const EMO = new Map();
+function emojiSprite(e) {
+  let c = EMO.get(e);
+  if (!c) {
+    c = document.createElement('canvas'); c.width = c.height = 128;
+    const x = c.getContext('2d'); x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.font = '96px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif';
+    x.fillText(e, 64, 70);
+    EMO.set(e, c);
+  }
+  return c;
+}
+function drawEmoji(e, x, y, glyph, rot) {
+  const s = emojiSprite(e), size = glyph * 1.33;   // el emoji ocupa ~75% de la imagen
+  if (rot) { ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.drawImage(s, -size / 2, -size / 2, size, size); ctx.restore(); }
+  else ctx.drawImage(s, x - size / 2, y - size / 2, size, size);
+}
+
 // ================================================================= MULTIPLICA
 // Un cañón suelta bolas que atraviesan puertas móviles. Las verdes las multiplican; cada puerta SUBE de nivel
 // (x2→x3→x4…) cuanto más bolas la cruzan. Calaveras y ÷2 las matan. Mantén pulsado para disparar a ráfagas.
@@ -362,8 +382,7 @@ const MERGE = {
       else { g.addColorStop(0, `hsl(${hue},95%,76%)`); g.addColorStop(1, `hsl(${hue},80%,38%)`); }
       ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
       ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 2.5; ctx.stroke();
-      ctx.font = `${Math.round(r * 1.35)}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`;
-      ctx.fillStyle = '#fff'; ctx.fillText(f.tier < 0 ? '💣' : FR[f.tier].e, x, y + r * 0.06);
+      drawEmoji(f.tier < 0 ? '💣' : FR[f.tier].e, x, y + r * 0.04, r * 1.35, 0);
     };
     for (const f of M.fruits) drawF(f, 1);
     if (phase === 'play' || phase === 'menu') {
@@ -517,7 +536,8 @@ function hoObj(inside) {
   let r = roll < 0.5 ? rand(0.2, 0.7) * h : roll < 0.75 ? rand(0.8, 1.2) * h : rand(1.4, 2.4) * h;
   r = clamp(r, 7, Math.max(62, h * 0.85));
   const a = rand(TAU), dd = inside ? rand(80, 285) : 308, va = rand(TAU), sp = rand(25, 80) * (1 + M.d * 0.06) * run.spinMul, t = Math.random();
-  const type = t < 0.035 && r > 10 && r < 40 ? 'poison' : t < 0.09 ? 'gold' : 'normal';
+  let type = t < 0.04 && M.objs.filter(q => q.type === 'poison').length < 2 ? 'poison' : t < 0.1 ? 'gold' : 'normal';
+  if (type === 'poison') r = clamp(rand(0.4, 0.8) * h, 9, 34);
   const e = type === 'poison' ? '💣' : type === 'gold' ? '🪙' : pick(r < 16 ? HO_SMALL : r < 32 ? HO_MID : HO_BIG);
   return { x: Math.cos(a) * dd, y: Math.sin(a) * dd, vx: Math.cos(va) * sp, vy: Math.sin(va) * sp, r, type, e, sw: 0, dead: false, flash: 0, ang: rand(TAU), wasEdible: false };
 }
@@ -525,18 +545,19 @@ function hoEat(o) {
   o.dead = true;
   const h = M.h;
   if (o.type === 'poison') {
+    if (M.done) { blob(o.x, o.y, 355, 10, 5); return; }
     h.r = Math.max(16, h.r * 0.88);
     for (let k = 0; k < 40; k++) spark(h.x, h.y, 355, 520, 0.7);
     floatText('¡VENENO!', h.x, h.y - h.r, 34, '#ff4d6a');
     if (!M.done) damage('poison', h.x, h.y);
     return;
   }
-  h.r = Math.sqrt(h.r * h.r + o.r * o.r * 0.11);
+  h.r = Math.sqrt(h.r * h.r + o.r * o.r * 0.13);
   M.eaten++; h.kick = 1;
   bumpCombo();
   const v = Math.round(2 * o.r * run.floor * Math.min(comboMult(game.combo), 30) * (o.type === 'gold' ? 5 : 1));
   addScore(v); dopaBoost(0.008 + o.r * 0.0005);
-  if ((o.r > 24 || o.type === 'gold') && (M.lastTxt = (M.lastTxt || 0) + 1) % 2 === 0) floatText('+' + fmt(v * run.scoreMul), h.x, h.y - h.r - 6, clamp(14 + o.r * 0.6, 14, 44), o.type === 'gold' ? '#ffd34d' : '#ffe27a');
+  if ((o.r > 34 || o.type === 'gold') && (M.lastTxt = (M.lastTxt || 0) + 1) % 2 === 0) floatText('+' + fmt(v * run.scoreMul), h.x, h.y - h.r - 6, clamp(14 + o.r * 0.6, 14, 44), o.type === 'gold' ? '#ffd34d' : '#ffe27a');
   for (let k = 0; k < 6; k++) spark(h.x, h.y, 280 + rand(60), 200, 0.35);
   Sfx.pop(Math.min(30, M.eaten % 30), o.r > 26);
   fx.shake = Math.max(fx.shake, Math.min(12, o.r * 0.22));
@@ -554,9 +575,9 @@ const HOLE = {
   hint: 'mueve el agujero · come lo pequeño · evita las bombas 💣',
   build(info) {
     const d = info.lvl;
-    M = { h: { x: 0, y: 0, tx: 0, ty: 0, r: 22, dr: 22, kick: 0 }, objs: [], target: Math.min(190, 150 + d * 8), spawnT: 0, done: false, d, eaten: 0, t: 0, finT: 0 };
+    M = { h: { x: 0, y: 0, tx: 0, ty: 0, r: 22, dr: 22, kick: 0 }, objs: [], target: Math.min(180, 140 + d * 8), spawnT: 0, done: false, d, eaten: 0, t: 0, finT: 0 };
     for (let i = 0; i < 70; i++) M.objs.push(hoObj(true));
-    run.timeMax = run.time = 38 * run.timeMul;
+    run.timeMax = run.time = 55 * run.timeMul;
   },
   move(ang, wx, wy) { const d = Math.hypot(wx, wy), k = d > 300 ? 300 / d : 1; M.h.tx = wx * k; M.h.ty = wy * k; },
   tap(ang, wx, wy) { this.move(ang, wx, wy); },
@@ -580,7 +601,7 @@ const HOLE = {
       o.x += o.vx * dt; o.y += o.vy * dt; o.ang += dt * (o.vx > 0 ? 0.5 : -0.5);
       const od = Math.hypot(o.x, o.y);
       if (od > 318 - o.r) { const nx = o.x / od, ny = o.y / od, vn = o.vx * nx + o.vy * ny; if (vn > 0) { o.vx -= 2 * vn * nx; o.vy -= 2 * vn * ny; } o.x = nx * (318 - o.r); o.y = ny * (318 - o.r); }
-      const s = Math.hypot(o.vx, o.vy); if (s > 200) { o.vx *= 0.96; o.vy *= 0.96; }
+      const s = Math.hypot(o.vx, o.vy); if (s > 240) { o.vx *= 240 / s; o.vy *= 240 / s; }
       const dx = h.x - o.x, dy = h.y - o.y, d = Math.hypot(dx, dy) || 1;
       const edible = o.type === 'poison' ? false : o.r < h.r * 0.88;
       if (edible !== o.wasEdible) { if (edible && o.r > 20) { o.flash = 1; Sfx.ping(); } o.wasEdible = edible; }
@@ -589,6 +610,7 @@ const HOLE = {
         if (d < range) { const pull = 1800 * (1 - d / range); o.vx += (dx / d * pull - dy / d * pull * 0.5) * dt; o.vy += (dy / d * pull + dx / d * pull * 0.5) * dt; }
         if (d < h.r * 0.7) { o.sw = 0.001; Sfx.ping(); }
       } else if (o.type === 'poison') {
+        if (d < h.r * 2.2 + o.r) { o.vx += -dx / d * 700 * dt; o.vy += -dy / d * 700 * dt; }   // las bombas huyen de ti
         if (d < h.r + o.r * 0.6) {
           if (run.inv <= 0 || M.done) hoEat(o);
           else { o.x += -dx / d * 6; o.y += -dy / d * 6; o.vx = -dx / d * 160; o.vy = -dy / d * 160; }
@@ -619,16 +641,12 @@ const HOLE = {
     ctx.globalCompositeOperation = 'source-over';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     for (const o of M.objs) {
-      if (o.sw < 0) continue;
       const edible = o.type !== 'poison' && o.r < M.h.r * 0.88, sc = o.sw > 0 ? Math.max(0.05, 1 - o.sw) : 1, r = o.r * sc;
       // aro de color: verde = te lo puedes comer, rojo = veneno, nada = demasiado grande
       if (o.type === 'poison') { ctx.globalAlpha = 0.5 + 0.4 * Math.sin(game.t * 9); ctx.strokeStyle = '#ff2f55'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(o.x, o.y, r * 1.35, 0, TAU); ctx.stroke(); }
       else if (edible) { ctx.globalAlpha = 0.5 + o.flash * 0.5; ctx.strokeStyle = o.type === 'gold' ? '#ffd34d' : '#3dffb0'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(o.x, o.y, r * 1.2, 0, TAU); ctx.stroke(); }
       ctx.globalAlpha = edible || o.type === 'poison' ? 1 : 0.55;
-      ctx.save(); ctx.translate(o.x, o.y); ctx.rotate(o.ang);
-      ctx.font = `${Math.max(6, Math.round(r * 1.7))}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`;
-      ctx.fillStyle = '#fff'; ctx.fillText(o.e, 0, r * 0.08);
-      ctx.restore();
+      drawEmoji(o.e, o.x, o.y, Math.max(6, r * 1.7), o.ang);
     }
     ctx.globalCompositeOperation = 'lighter';
     ctx.globalAlpha = 1;
