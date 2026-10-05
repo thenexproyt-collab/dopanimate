@@ -6,7 +6,7 @@
 <title>Dopamina</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@500;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=10">
+<link rel="stylesheet" href="style.css?v=20">
 </head>
 <body>
 <div id="app">
@@ -24,6 +24,7 @@
         <div id="boss"><div id="bossName"></div><div id="bossBar"><div id="bossFill"></div></div></div>
       </div>
     </div>
+    <div id="mutBar"><div id="mutPct">0%</div><div id="mutTrack"><div id="mutFill"></div></div><div id="mutLab">MUTACIÓN</div></div>
     <div id="combo"></div>
     <div id="banner"></div>
     <div id="hint"></div>
@@ -46,8 +47,8 @@
         <button class="big" id="playBtn">JUGAR</button>
         <div class="stats" id="menuStats"></div>
         <div class="how">
-          <div>Empieza siendo un juego de <b>anillos</b>… y <b>casi cada piso muta en otro</b>.</div>
-          <div><b>7 juegos</b>: anillos, multiplica, fusión, reacción, agujero negro, enjambre y tragaperras. Los anillos salen más.</div>
+          <div>Casi todo el tiempo juegas a <b>MULTIPLICA</b>: cañón, torretas y puertas x2, x5, x10…</div>
+          <div>La <b>barra de la derecha</b> cuenta tu dopamina sostenida. Cuando se llena, el juego <b>muta</b>: ejército, largo × ancho, anillos, fusión, reacción…</div>
           <div>Rompe cosas para llenar la barra de <b>FRENESÍ</b>: x3 puntos y lluvia de bolas.</div>
           <div><b class="red">Pinchos, bichos y tiempo</b> quitan corazones. Cada piso eliges una carta. Cada acto acaba en jefe.</div>
         </div>
@@ -79,7 +80,8 @@
   </div>
   <div id="relics"></div>
 </div>
-<script src="modes.js?v=10"></script>
-<script src="game.js?v=10"></script>
+<script src="modes.js?v=20"></script>
+<script src="runner.js?v=20"></script>
+<script src="game.js?v=20"></script>
 </body>
 </html>

@@ -23,53 +23,76 @@ function drawEmoji(e, x, y, glyph, rot) {
   else ctx.drawImage(s, x - size / 2, y - size / 2, size, size);
 }
 
-// ================================================================= MULTIPLICA
-// Un cañón suelta bolas que atraviesan puertas móviles. Las verdes las multiplican; cada puerta SUBE de nivel
-// (x2→x3→x4…) cuanto más bolas la cruzan. Calaveras y ÷2 las matan. Mantén pulsado para disparar a ráfagas.
-function mlRow(y, n, d, first) {
+// ================================================================= MULTIPLICA (el juego principal)
+// El cañón de arriba (y las TORRETAS que vayas consiguiendo) sueltan bolas que cruzan puertas móviles.
+// Las puertas suben de nivel cuantas más bolas pasan (x2 → x3 → x5 → x10…). Calaveras y ÷2 las matan.
+// Abajo hay un JEFE: cada bola que llega le quita vida. Mantén pulsado para disparar a ráfagas.
+const ML_BOSSES = [
+  { name: 'EL BLOQUE', hue: 350 }, { name: 'LA MURALLA', hue: 20 }, { name: 'EL DEVORABOLAS', hue: 280 },
+  { name: 'EL TITÁN', hue: 200 }, { name: 'EL GUARDIÁN', hue: 320 }, { name: 'LA BESTIA', hue: 140 },
+];
+const mlHue = g => g.kind === 'skull' ? 350 : g.kind === 'half' ? 22 : g.kind === 'turret' ? 190 : g.kind === 'used' ? 220 : 118 + Math.min(g.k, 9) * 24;
+const mlLabel = g => g.kind === 'mult' ? `x${g.k + 1}` : g.kind === 'half' ? '÷2' : g.kind === 'skull' ? '☠' : g.kind === 'turret' ? '+TORRETA' : '✓';
+function mlRow(y, n, d, boost, withTurret) {
   const laneW = 580 / n, out = [];
   for (let k = 0; k < n; k++) {
-    const w = laneW * rand(0.5, 0.72), cx = -290 + laneW * (k + 0.5), rr = Math.random(), bad = 0.18 + Math.min(0.17, d * 0.03);
+    const w = laneW * rand(0.5, 0.72), cx = -290 + laneW * (k + 0.5), rr = Math.random(), bad = 0.16 + Math.min(0.16, d * 0.025);
     let kind = rr < bad * 0.45 ? 'skull' : rr < bad ? 'half' : 'mult';
-    if (first && k === 0) kind = 'mult';
-    const lv = kind === 'mult' ? (Math.random() < 0.65 ? 1 : 2) : 0;
-    out.push({ y, w, cx, amp: (laneW - w) / 2 * 0.92, sp: rand(0.6, 1.5 + d * 0.1) * sgn(), ph: rand(TAU), x: cx, kind, k: lv,
+    if (k === 0) kind = 'mult';
+    const lv = kind === 'mult' ? Math.min(7, pick([1, 1, 2, 2, 3]) + boost) : 0;
+    out.push({ y, w, cx, amp: (laneW - w) / 2 * 0.92, sp: rand(0.6, 1.5 + d * 0.08) * sgn(), ph: rand(TAU), x: cx, kind, k: lv,
       need: 30 + 18 * lv, passed: 0, flash: 0, up: 0, bit: 0 });
   }
-  if (!out.some(g => g.kind === 'mult')) { out[0].kind = 'mult'; out[0].k = 1; out[0].need = 48; }
+  if (withTurret && n > 1) { const g = out[n - 1]; g.kind = 'turret'; g.k = 0; }
   return out;
 }
-const mlHue = g => g.kind === 'skull' ? 350 : g.kind === 'half' ? 22 : 118 + g.k * 34;
 function mlSpawn(x, vx, vy) {
-  M.drops.push({ x, y: -296, vx, vy, mask: 0, hue: 48 + rand(-8, 8) });
+  M.drops.push({ x, y: M.yT + 14, vx, vy, mask: 0, hue: 48 + rand(-8, 8) });
 }
-function mlCup(p) {
-  M.got++; M.cup = 1;
-  addScore(10 * run.floor * (1 + Math.floor(M.got / 100)));
-  if (M.got % 20 === 0) { bumpCombo(); dopaBoost(0.03); Sfx.star(M.got / 20); onDestroy(p.x, 280, 0.2); }
-  if (M.got % 100 === 0) {
-    floatText(fmt(M.got), p.x, 250, 40, '#ffe27a');
-    shockwaves.push({ R: 10, t: 0, hue: 48, cx: p.x, cy: 290 });
-    fx.shake = Math.max(fx.shake, 10); Sfx.jackpot(8);
+function mlHitBoss(p) {
+  const dmg = run.ballDmg || 1, b = M.boss;
+  b.hp -= dmg; M.bossFlash = 1; M.hits++; M.dmgAcc += dmg;
+  if (run.boss) run.boss.hp = Math.max(0, b.hp);
+  addScore(10 * run.floor * (1 + Math.floor(M.hits / 100)));
+  if (M.hits % 20 === 0) { bumpCombo(); dopaBoost(0.03); Sfx.star(M.hits / 20); onDestroy(p.x, 270, 0.2); }
+  if (M.hits % 100 === 0 && M.t - (M.lastDmgT || -9) > 0.6) {
+    M.lastDmgT = M.t;
+    floatText('-' + fmt(M.dmgAcc), p.x, M.yB - 80, 38, '#ffe27a'); M.dmgAcc = 0;
+    shockwaves.push({ R: 10, t: 0, hue: 48, cx: p.x, cy: M.yB - 30 }); fx.shake = Math.max(fx.shake, 9); Sfx.jackpot(8);
   }
+  if (Math.random() < 0.1) for (let k = 0; k < 3; k++) spark(p.x, M.yB - 40, b.hue, 260, 0.35);
+}
+function mlWin() {
+  M.done = true;
+  const b = M.boss;
+  blob(0, M.yB - 25, b.hue, 120, 10);
+  for (let k = 0; k < 6; k++) shockwaves.push({ R: 20 + k * 40, t: -k * 0.07, hue: b.hue + k * 40, cx: 0, cy: M.yB - 25 });
+  fx.shake = 40; fx.flash = 1; fx.flashHue = b.hue; fx.hitStop = 0.2;
+  if (run.boss) run.boss.alive = false;
+  floorClear(`${b.name} derrotado`);
 }
 const MULTIPLY = {
-  id: 'multiply', title: 'MULTIPLICA', tag: 'cada puerta sube de nivel cuanto más pasa', timed: true,
+  id: 'multiply', title: 'MULTIPLICA', tag: 'cada puerta sube de nivel · abajo te espera un jefe', timed: true,
   hint: 'mueve el cañón · mantén pulsado para disparar a ráfagas · toca para abanico',
   build(info) {
-    const d = info.lvl;
-    M = { cannonX: 0, tx: 0, gates: [], bumpers: [], drops: [], t: 0, got: 0, quota: 2400 + d * 500, fireT: 0, rate: 9, burstCd: 0, done: false, cup: 0 };
-    M.ammo = M.maxAmmo = 140 + (run.maxCharges - 2) * 20 + (run.balls - 1) * 20;
-    [-185, -80, 25, 130].forEach((y, ri) => M.gates.push(...mlRow(y, ri === 0 ? 2 : 2 + (Math.random() < 0.4 ? 1 : 0), d, ri === 0)));
+    const d = info.lvl, w = info.s, boost = Math.min(3, Math.floor(w / 4)) + (run.gateBonus || 0);
+    const sv = viewScale || 0.5, yT = clamp(-((H / 2 + 30) - 190) / sv, -640, -310), yB = clamp((H / 2 - 30) / sv - 10, 310, 640);
+    M = { yT, yB, cannonX: 0, tx: 0, gates: [], bumpers: [], drops: [], t: 0, fireT: 0, burstCd: 0, done: false, bossFlash: 0, hits: 0, dmgAcc: 0, tf: [0, 0, 0, 0, 0, 0], cap: 1500 + 150 * Math.min(w, 10) };
+    const hasT = run.turrets < 6 && Math.random() < 0.6, tRow = 1 + Math.floor(rand(3));
+    [0.2, 0.38, 0.56, 0.74].map(f => yT + (yB - yT) * f).forEach((y, ri) => M.gates.push(...mlRow(y, ri === 0 ? 2 : 2 + (Math.random() < 0.4 ? 1 : 0), d, boost, hasT && ri === tRow)));
     M.gates.forEach((g, i) => { g.bit = 1 << i; });
-    for (let i = 0; i < 4; i++) for (let k = 0; k < 3; k++) M.bumpers.push({ x: rand(-250, 250), y: -132 + i * 105 + rand(-12, 12), r: rand(9, 13), flash: 0 });
-    run.timeMax = run.time = 28 * run.timeMul;
+    for (let i = 0; i < 4; i++) for (let k = 0; k < 3; k++) M.bumpers.push({ x: rand(-250, 250), y: yT + (yB - yT) * (0.29 + i * 0.18) + rand(-12, 12), r: rand(9, 13), flash: 0 });
+    const bi = (w >> 0) % ML_BOSSES.length, bd = ML_BOSSES[bi];
+    const hp = Math.round(30000 * (1 + 0.3 * w) * (info.boss ? 2.2 : 1));
+    M.boss = { name: bd.name, hue: bd.hue, hp, maxHp: hp };
+    if (info.boss) run.boss = { name: bd.name, hp, maxHp: hp, alive: true, hue: bd.hue };
+    run.timeMax = run.time = (info.boss ? 105 : 75) * run.timeMul;
   },
   tap(ang, wx) {
     M.tx = clamp(wx, -265, 265);
-    if (M.burstCd <= 0 && M.ammo >= 8) {
-      M.burstCd = 1; const n = Math.min(M.ammo, 14); M.ammo -= n;
-      for (let i = 0; i < n; i++) mlSpawn(M.cannonX, (i - (n - 1) / 2) * 38 + rand(-8, 8), 120 + rand(0, 60));
+    if (M.burstCd <= 0) {
+      M.burstCd = 1;
+      for (let i = 0; i < 14; i++) mlSpawn(M.cannonX, (i - 6.5) * 38 + rand(-8, 8), 120 + rand(0, 60));
       Sfx.zap(true); fx.shake = Math.max(fx.shake, 6);
     }
   },
@@ -77,15 +100,22 @@ const MULTIPLY = {
   echo() { },
   update(dt, rdt, live) {
     M.t += dt; M.burstCd -= rdt;
+    M.bossFlash = Math.max(0, M.bossFlash - rdt * 4);
     for (const g of M.gates) { g.x = g.cx + Math.sin(M.t * g.sp + g.ph) * g.amp; g.flash = Math.max(0, g.flash - rdt * 3); g.up = Math.max(0, g.up - rdt * 1.6); }
     for (const b of M.bumpers) b.flash = Math.max(0, b.flash - rdt * 5);
-    M.cup = Math.max(0, M.cup - rdt * 3);
     if (!live) return;
     M.cannonX += (M.tx - M.cannonX) * Math.min(1, rdt * 16);
-    const rate = (game.down ? 22 : M.rate) * (game.frenzy > 0 ? 1.5 : 1);
-    M.fireT -= dt;
-    while (M.ammo > 0 && M.fireT <= 0) { M.fireT += 1 / rate; M.ammo--; mlSpawn(M.cannonX + rand(-6, 6), rand(-35, 35), 160); }
-    if (M.ammo <= 0) M.fireT = 0;
+    if (!M.done) {
+      const rate = (game.down ? 22 : 9) * (run.rateMul || 1) * (game.frenzy > 0 ? 1.5 : 1);
+      M.fireT -= dt;
+      while (M.fireT <= 0) { M.fireT += 1 / rate; mlSpawn(M.cannonX + rand(-6, 6), rand(-35, 35), 160); }
+      // torretas automáticas
+      const nT = run.turrets | 0;
+      for (let i = 0; i < nT; i++) {
+        M.tf[i] -= dt;
+        if (M.tf[i] <= 0) { M.tf[i] += 1 / (2.4 * (run.rateMul || 1)); mlSpawn(-240 + (i + 0.5) * 480 / nT + rand(-5, 5), rand(-25, 25), 170); }
+      }
+    }
     const add = [];
     for (const p of M.drops) {
       const py = p.y;
@@ -103,21 +133,28 @@ const MULTIPLY = {
         }
       }
       for (const g of M.gates) {
-        if (p.mask & g.bit) continue;
+        if ((p.mask & g.bit) || g.kind === 'used') continue;
         if (py < g.y && p.y >= g.y && Math.abs(p.x - g.x) < g.w / 2) {
           p.mask |= g.bit; g.flash = 1; g.passed++;
           if (g.kind === 'mult') {
             p.hue = (p.hue + 28) % 360;
-            for (let c = 0; c < g.k && M.drops.length + add.length < 1500; c++)
+            for (let c = 0; c < g.k && M.drops.length + add.length < M.cap; c++)
               add.push({ x: p.x + rand(-7, 7), y: g.y + rand(-2, 6), vx: p.vx + rand(-120, 120), vy: p.vy * rand(0.7, 1), mask: p.mask, hue: p.hue });
             if (Math.random() < 0.3) Sfx.peg(8 + g.k * 3 + (g.passed % 6));
             dopaBoost(0.0012 * g.k);
-            if (g.passed >= g.need && g.k < 7) {
+            if (g.passed >= g.need && g.k < 9) {
               g.k++; g.passed = 0; g.need = 30 + 18 * g.k; g.up = 1; g.flash = 1.5;
-              floatText(`¡x${g.k + 1}!`, g.x, g.y - 34, 38, `hsl(${mlHue(g)},100%,70%)`);
+              floatText(`¡x${g.k + 1}!`, g.x, g.y - 34, 40, `hsl(${mlHue(g)},100%,70%)`);
               shockwaves.push({ R: 10, t: 0, hue: mlHue(g), cx: g.x, cy: g.y });
               for (let q = 0; q < 24; q++) spark(g.x + rand(-g.w / 2, g.w / 2), g.y, mlHue(g), 360, 0.6);
-              Sfx.jackpot(3); fx.shake = Math.max(fx.shake, 8); dopaBoost(0.09); bumpCombo();
+              Sfx.jackpot(g.k >= 4 ? 8 : 3); fx.shake = Math.max(fx.shake, 8); dopaBoost(0.09); bumpCombo();
+            }
+          } else if (g.kind === 'turret') {
+            if (run.turrets < 6) {
+              run.turrets++; g.kind = 'used';
+              floatText('¡TORRETA!', g.x, g.y - 34, 40, '#7df');
+              shockwaves.push({ R: 10, t: 0, hue: 190, cx: g.x, cy: g.y }); fx.shake = Math.max(fx.shake, 10); fx.flash = 0.4; fx.flashHue = 190;
+              Sfx.cardPick(2); dopaBoost(0.1);
             }
           } else if (Math.random() < (g.kind === 'skull' ? 1 : 0.5)) {
             p.dead = true; spark(p.x, p.y, 350, 160, 0.3);
@@ -125,41 +162,36 @@ const MULTIPLY = {
           }
         }
       }
-      if (p.y > 300) { p.dead = true; mlCup(p); }
+      if (p.y > M.yB - 42) { p.dead = true; if (!M.done) mlHitBoss(p); }
     }
     M.drops = M.drops.filter(p => !p.dead).concat(add);
-    if (!M.done && M.got >= M.quota) { M.done = true; floorClear(`${fmt(M.got)} bolas`); }
-    if (!M.done && phase === 'play' && M.ammo <= 0 && M.drops.length === 0) {
-      M.ammo = M.maxAmmo; run.time = Math.max(1, run.time - 5);
-      banner('¡SIN BOLAS!', '−5 s · recarga completa', true); Sfx.deny();
-    }
+    if (!M.done && M.boss.hp <= 0) mlWin();
   },
   ai() {
-    const g = M.gates.filter(q => q.kind === 'mult').sort((a, b) => b.k - a.k || a.y - b.y)[0];
+    const g = M.gates.filter(q => q.kind === 'mult' || q.kind === 'turret').sort((a, b) => (b.kind === 'turret') - (a.kind === 'turret') || b.k - a.k || a.y - b.y)[0];
     if (g) M.tx = g.x;
     if (M.burstCd <= 0 && Math.random() < 0.02) this.tap(0, M.tx);
   },
   drawBack() {
-    ctx.strokeStyle = '#ffffff40'; ctx.lineWidth = 2; ctx.strokeRect(-290, -310, 580, 620);
+    ctx.strokeStyle = '#ffffff40'; ctx.lineWidth = 2; ctx.strokeRect(-290, M.yT - 12, 580, M.yB - M.yT + 12);
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineCap = 'butt';
     for (const g of M.gates) {
-      const hue = mlHue(g), lit = g.flash;
+      const hue = mlHue(g), lit = g.flash, used = g.kind === 'used';
       const col = `hsl(${hue},100%,${52 + lit * 22}%)`, bh = 34 + g.up * 10;
-      // brillo y cuerpo sólido de la puerta
-      ctx.globalAlpha = 0.14 + lit * 0.3 + fx.beat * 0.1; ctx.fillStyle = col;
+      ctx.globalAlpha = (used ? 0.05 : 0.14) + lit * 0.3 + fx.beat * 0.1; ctx.fillStyle = col;
       ctx.fillRect(g.x - g.w / 2 - 12, g.y - bh - 10, g.w + 24, bh + 22);
       ctx.globalCompositeOperation = 'source-over';
-      ctx.globalAlpha = 0.92; ctx.fillStyle = `hsl(${hue},85%,${34 + lit * 14}%)`;
+      ctx.globalAlpha = used ? 0.4 : 0.92; ctx.fillStyle = `hsl(${hue},85%,${34 + lit * 14}%)`;
       ctx.fillRect(g.x - g.w / 2 - 6 * g.up, g.y - bh, g.w + 12 * g.up, bh + 4);
-      ctx.globalAlpha = 1; ctx.fillStyle = col;
+      ctx.globalAlpha = used ? 0.4 : 1; ctx.fillStyle = col;
       ctx.fillRect(g.x - g.w / 2, g.y - 2, g.w, 6);
       ctx.fillRect(g.x - g.w / 2 - 3, g.y - 20, 6, 24); ctx.fillRect(g.x + g.w / 2 - 3, g.y - 20, 6, 24);
-      const label = g.kind === 'mult' ? `x${g.k + 1}` : g.kind === 'half' ? '÷2' : '☠';
-      ctx.font = `900 ${Math.round(26 + lit * 10 + g.up * 14)}px Rubik, sans-serif`;
+      const label = mlLabel(g);
+      ctx.font = `900 ${Math.round((g.kind === 'turret' ? 20 : 26) + lit * 10 + g.up * 14)}px Rubik, sans-serif`;
       ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.strokeText(label, g.x, g.y - 18);
       ctx.fillStyle = '#fff'; ctx.fillText(label, g.x, g.y - 18);
       ctx.globalCompositeOperation = 'lighter';
-      if (g.kind === 'mult') { // barra de progreso al siguiente nivel
+      if (g.kind === 'mult') {
         ctx.globalAlpha = 0.25; ctx.fillStyle = '#fff'; ctx.fillRect(g.x - g.w / 2, g.y + 9, g.w, 4);
         ctx.globalAlpha = 0.95; ctx.fillStyle = col; ctx.fillRect(g.x - g.w / 2, g.y + 9, g.w * clamp(g.passed / g.need, 0, 1), 4);
       }
@@ -170,10 +202,23 @@ const MULTIPLY = {
       ctx.beginPath(); ctx.arc(b.x, b.y, b.r * (1.5 + b.flash), 0, TAU); ctx.fill();
       ctx.globalAlpha = 1; ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, TAU); ctx.fill();
     }
-    // el cubo
-    ctx.globalAlpha = 0.22 + M.cup * 0.4 + fx.beat * 0.1; ctx.fillStyle = '#ffd34d'; ctx.fillRect(-290, 288, 580, 24);
-    ctx.globalAlpha = 1; ctx.font = '900 20px Rubik, sans-serif'; ctx.fillStyle = '#fff4c2';
-    ctx.fillText(`${fmt(M.got)} / ${fmt(M.quota)}`, 0, 300);
+    // el JEFE de abajo: dientes, ojos que siguen al cañón y barra de vida
+    const b = M.boss, hpf = clamp(b.hp / b.maxHp, 0, 1), hot = 1 - hpf, yb = M.yB, y0 = yb - 42;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 0.95; ctx.fillStyle = `hsl(${b.hue},${60 + hot * 30}%,${16 + M.bossFlash * 34}%)`;
+    ctx.beginPath(); ctx.moveTo(-290, yb); ctx.lineTo(-290, y0 + 10);
+    for (let k = 0; k < 30; k++) { const x = -290 + k * 19.33; ctx.lineTo(x + 9.7, y0 + Math.sin(game.t * 4 + k) * 1.5); ctx.lineTo(x + 19.33, y0 + 10); }
+    ctx.lineTo(290, yb); ctx.closePath(); ctx.fill();
+    ctx.globalAlpha = 1; ctx.strokeStyle = `hsl(${b.hue},100%,${60 + M.bossFlash * 30}%)`; ctx.lineWidth = 3; ctx.stroke();
+    for (const s of [-1, 1]) {
+      const ex = s * 105, ey = y0 + 24, look = clamp((M.cannonX - ex) / 260, -1, 1) * 5;
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(ex, ey, 11, 0, TAU); ctx.fill();
+      ctx.fillStyle = hot > 0.7 ? '#f22' : '#200'; ctx.beginPath(); ctx.arc(ex + look, ey + 1, 5, 0, TAU); ctx.fill();
+    }
+    ctx.fillStyle = hpf > 0.35 ? '#ffd34d' : '#ff3d3d'; ctx.fillRect(-290, yb - 6, 580 * hpf, 5);
+    ctx.font = '900 16px Rubik, sans-serif'; ctx.fillStyle = '#fff'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.6)';
+    const t = `${b.name} · ${fmt(Math.max(0, b.hp))}`; ctx.strokeText(t, 0, y0 + 26); ctx.fillText(t, 0, y0 + 26);
+    ctx.globalCompositeOperation = 'lighter';
   },
   drawFront() {
     const groups = {};
@@ -187,14 +232,25 @@ const MULTIPLY = {
         ctx.fill();
       }
     }
+    // torretas
+    const nT = run.turrets | 0;
+    for (let i = 0; i < nT; i++) {
+      const x = -240 + (i + 0.5) * 480 / nT, kick = clamp(M.tf[i] * 2, 0, 1) * 0;
+      ctx.globalAlpha = 0.9; ctx.fillStyle = '#7df';
+      ctx.beginPath(); ctx.moveTo(x - 13, M.yT - 8); ctx.lineTo(x + 13, M.yT - 8); ctx.lineTo(x + 5, M.yT + 14 + kick); ctx.lineTo(x - 5, M.yT + 14 + kick); ctx.fill();
+      ctx.globalAlpha = 0.35; ctx.beginPath(); ctx.arc(x, M.yT + 10, 12, 0, TAU); ctx.fill();
+    }
     ctx.globalAlpha = 1; ctx.fillStyle = '#fff';
-    ctx.beginPath(); ctx.moveTo(M.cannonX - 20, -318); ctx.lineTo(M.cannonX + 20, -318); ctx.lineTo(M.cannonX, -288); ctx.fill();
-    ctx.globalAlpha = 0.5; ctx.fillStyle = '#ffe27a'; ctx.beginPath(); ctx.arc(M.cannonX, -286, 7 + (game.down ? 4 : 0), 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(M.cannonX - 22, M.yT - 10); ctx.lineTo(M.cannonX + 22, M.yT - 10); ctx.lineTo(M.cannonX, M.yT + 22); ctx.fill();
+    ctx.globalAlpha = 0.5; ctx.fillStyle = '#ffe27a'; ctx.beginPath(); ctx.arc(M.cannonX, M.yT + 24, 7 + (game.down ? 5 : 0), 0, TAU); ctx.fill();
     ctx.globalAlpha = 1;
   },
-  hud() { return { fill: M.got / M.quota, text: `${fmt(M.got)}/${fmt(M.quota)} · ${M.ammo} bolas · ${Math.max(0, run.time).toFixed(1)} s`, low: run.time < 5 }; },
-  blackhole() { M.got += M.drops.length; M.drops = []; },
-  frenzy() { M.ammo += 60; },
+  hud() {
+    const b = M.boss;
+    return { fill: 1 - clamp(b.hp / b.maxHp, 0, 1), text: `${b.name}: ${fmt(Math.max(0, b.hp))} · ${run.turrets ? '🔫' + run.turrets + ' · ' : ''}${Math.max(0, run.time).toFixed(0)} s`, low: run.time < 5 };
+  },
+  blackhole() { for (const p of M.drops) p.y = M.yB - 30; },
+  frenzy() { run.rateMul = (run.rateMul || 1); M.fireT = 0; for (let i = 0; i < 40; i++) mlSpawn(rand(-250, 250), rand(-40, 40), 170); },
   explode() { for (const p of M.drops.slice(0, 200)) spark(p.x, p.y, p.hue, 300, 0.6); M.drops = []; M.gates = []; M.bumpers = []; },
 };
 

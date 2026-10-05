@@ -236,3 +236,22 @@ button { font-family: inherit; }
 .heart.shield { font-size: clamp(30px, 8vw, 52px); }
 @keyframes pulseHeart { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.07); } }
 #hearts.low .heart:not(.empty):not(.shield) { animation: beat .8s infinite; }
+
+/* ---------- barra de mutación (derecha) ---------- */
+#mutBar { position: absolute; right: 8px; top: 72px; bottom: 96px; width: 26px; z-index: 6; display: flex; flex-direction: column;
+  align-items: center; gap: 5px; pointer-events: none; }
+#mutPct { font-size: 12px; font-weight: 900; letter-spacing: .5px; text-shadow: 0 1px 3px #000; }
+#mutTrack { flex: 1; width: 16px; border-radius: 9px; background: #ffffff14; border: 1.5px solid #ffffff26; overflow: hidden;
+  display: flex; align-items: flex-end; box-shadow: 0 0 14px #00000088 inset; }
+#mutFill { width: 100%; height: 0; border-radius: 7px; transition: height .25s linear;
+  background: linear-gradient(0deg, #3d6bff, #3dffb0 40%, #ffe53d 70%, #ff3d7f); box-shadow: 0 0 12px #ff3d7f66; }
+#mutLab { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 11px; font-weight: 900; letter-spacing: 3px; opacity: .65; text-shadow: 0 1px 3px #000; }
+#mutBar.near #mutTrack { border-color: #ffd34d; box-shadow: 0 0 16px #ffd34d88; }
+#mutBar.ready #mutTrack { border-color: #fff; box-shadow: 0 0 24px #ff3d7f; animation: blink .3s infinite; }
+#mutBar.ready #mutLab { opacity: 1; color: #ff8ad0; }
+@media (max-width: 520px) { #mutBar { right: 3px; width: 20px; } #mutTrack { width: 12px; } }
+
+@media (max-width: 520px) {
+  #hearts { top: 126px; left: 0; right: 0; max-width: none; justify-content: center; gap: 0 6px; pointer-events: none; }
+  .heart { font-size: 46px; min-width: 40px; }
+}

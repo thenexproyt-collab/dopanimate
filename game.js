@@ -336,6 +336,11 @@ const RELICS = [
   { id: 'echo', rar: 3, icon: '🔊', name: 'Eco', desc: 'Cada disparo sale doble.', unique: true },
   { id: 'phoenix', rar: 3, icon: '🔥', name: 'Fénix', desc: 'Al morir, revives una vez con 2 corazones.', unique: true },
   { id: 'blackhole', rar: 3, icon: '🕳️', name: 'Agujero negro', desc: 'Cada 15 s el centro se traga lo que tenga cerca.', unique: true },
+  { id: 'turret', rar: 1, icon: '🔫', name: 'Torreta', desc: '+1 torreta automática en MULTIPLICA (máx. 6).', apply() { run.turrets = Math.min(6, run.turrets + 1); } },
+  { id: 'heavy', rar: 1, icon: '💥', name: 'Bolas pesadas', desc: 'En MULTIPLICA, cada bola quita el doble de vida al jefe.', apply() { run.ballDmg *= 2; } },
+  { id: 'overclock', rar: 1, icon: '🚀', name: 'Sobrecarga', desc: 'El cañón y las torretas disparan un 35% más rápido.', apply() { run.rateMul *= 1.35; } },
+  { id: 'gate5', rar: 2, icon: '✖️', name: 'Puertas potentes', desc: 'Las puertas de MULTIPLICA empiezan un nivel más alto.', apply() { run.gateBonus++; } },
+  { id: 'crowd', rar: 2, icon: '👥', name: 'Gente de más', desc: 'EJÉRCITO y LARGO × ANCHO empiezan con más gente y más tamaño.' },
   { id: 'pact_blood', rar: -1, icon: '🩸', name: 'Pacto de sangre', desc: '+2 tiros y recarga +30%… pero −1 corazón máximo.', avail: () => run.maxHp > 1,
     apply() { run.maxCharges += 2; run.rechargeMul *= 0.7; run.maxHp--; run.hp = Math.min(run.hp, run.maxHp); } },
   { id: 'pact_time', rar: -1, icon: '⌛', name: 'Pacto del tiempo', desc: 'Huecos +30%… pero −25% de tiempo.', apply() { run.gapMul *= 1.3; run.timeMul *= 0.75; } },
@@ -373,7 +378,7 @@ let rings = [], balls = [], particles = [], floaters = [], stars = [], shockwave
 let run = null, mode = null, M = {};
 let phase = 'menu';   // menu | play | clear | pick | picked | mutate | dying | dead
 const fx = { shake: 0, zoom: 1, zoomTarget: 1, camX: 0, camY: 0, timeScale: 1, slowTarget: 1, flash: 0, flashHue: 0, hitStop: 0, hurt: 0, beat: 0, rot: 0, lastSlow: false };
-const game = { dopa: 0, down: false, combo: 0, comboTimer: 0, almostCd: 0, displayScore: 0, aim: null, aimLast: 0, denyT: 0, phaseT: 0, lastTick: 99, beatT: 0, t: 0, mutateTo: 0, demoT: 0, demoIdx: 0, hintT: 0 };
+const game = { mut: 0, dopa: 0, down: false, combo: 0, comboTimer: 0, almostCd: 0, displayScore: 0, aim: null, aimLast: 0, denyT: 0, phaseT: 0, lastTick: 99, beatT: 0, t: 0, mutateTo: 0, demoT: 0, demoIdx: 0, hintT: 0 };
 Sfx.onBeat(() => { fx.beat = 1; });
 
 function resize() {
@@ -386,39 +391,49 @@ function resize() {
 }
 
 // ---------------------------------------------------------------- estructura de la partida
-// Cada ciclo de 6 pisos: 4 juegos distintos al azar + jefe + tragaperras. Casi cada piso es OTRO juego.
-// Los anillos son el juego favorito: salen en 2 de cada 4 pisos normales y en la mayoría de jefes.
-// (El rompebloques se quitó: sigue en el código pero ya no sale.)
-const POOL = ['swarm', 'multiply', 'merge', 'chain', 'hole'];
-const BOSS_MODES = ['rings', 'rings', 'swarm'];
-const DEMO_ORDER = ['rings', 'multiply', 'rings', 'merge', 'swarm', 'chain', 'hole', 'plinko'];
+// MULTIPLICA es el juego principal: te quedas en él hasta que la barra de la derecha (dopamina sostenida) se llena.
+// Entonces el juego muta a otro formato viral y, cuando se llena otra vez, vuelve a MULTIPLICA.
+// Cada 5 pisos hay jefe (y después un bonus de tragaperras). Rompebloques y agujero se quitaron: siguen en el código, no salen.
+const CORE = 'multiply';
+const ALTS = ['rings', 'crowd', 'sizes', 'merge', 'chain', 'swarm'];
+const BOSSABLE = ['rings', 'swarm', 'multiply'];
+const DEMO_ORDER = ['rings', 'multiply', 'crowd', 'sizes', 'merge', 'swarm', 'chain', 'plinko'];
 function modeAt(s) {
   if (!run.sched) run.sched = [];
   while (run.sched.length <= s) {
-    const i = run.sched.length, k = i % 6;
-    let m;
-    if (run.demo) m = DEMO_ORDER[i % DEMO_ORDER.length];
-    else if (k === 0 || k === 2) m = 'rings';
-    else if (k === 4) m = pick(BOSS_MODES);
-    else if (k === 5) m = 'plinko';
-    else {
-      const recent = run.sched.slice(-4);
-      m = pick(POOL.filter(x => !recent.includes(x)));
-    }
-    run.sched.push(m);
+    const i = run.sched.length;
+    run.sched.push(run.demo ? DEMO_ORDER[i % DEMO_ORDER.length] : i === 0 ? 'rings' : (run.cur || CORE));
   }
   return run.sched[s];
 }
 function stageInfo(s) {
-  const loop = Math.floor(s / 6), k = s % 6;
-  return { s, loop, k, mode: modeAt(s), boss: k === 4 && !run.demo, bonus: k === 5 && !run.demo, lvl: Math.floor(s / 3) };
+  const mode = modeAt(s);
+  return { s, loop: Math.floor(s / 6), k: s % 5, mode, boss: !run.demo && s % 5 === 4 && BOSSABLE.includes(mode), bonus: !run.demo && mode === 'plinko', lvl: Math.floor(s / 3) };
+}
+// se decide al acabar cada piso: ¿sigues igual, bonus de tragaperras o muta?
+function planNext() {
+  if (run.demo) return;
+  const nxt = run.stage + 1;
+  let m;
+  if (run.info.boss) m = 'plinko';
+  else {
+    let base = run.cur;
+    if (nxt === 1) { base = CORE; game.mut = 0; }
+    else if (game.mut >= 1) {
+      base = run.cur === CORE ? pick(ALTS.filter(x => x !== run.lastAlt)) : CORE;
+      if (base !== CORE) run.lastAlt = base;
+      game.mut = 0;
+    }
+    run.cur = base; m = base;
+  }
+  run.sched[nxt] = m;
 }
 const GAME_SPEED = 1.12;
 const tripI = () => run ? (clamp((Math.floor((run.stage || 0) / 3) + run.tripBonus) / 6, 0, 1) * (run.demo ? 0.5 : 1) + (run.demo ? 0.3 : 0.12) + (game.frenzy > 0 ? 0.4 : 0)) * (run.demo ? 1 : 0.3 + 0.7 * game.dopa) : 0.2;
 
 function newRun(demo = false) {
   run = {
-    demo, stage: 0, floor: 1, info: null, sched: null, hp: 3 + metaLv('hp'), maxHp: 3 + metaLv('hp'), shield: 0, shieldNow: 0,
+    demo, stage: 0, floor: 1, info: null, sched: null, cur: 'rings', lastAlt: null, turrets: 0, ballDmg: 1, rateMul: 1, gateBonus: 0, hp: 3 + metaLv('hp'), maxHp: 3 + metaLv('hp'), shield: 0, shieldNow: 0,
     score: 0, scoreMul: 1, relics: {}, order: [], balls: 1, maxCharges: 2 + metaLv('shots'), charges: 2, rechargeMul: 1,
     gapMul: 1, timeMul: 1 + 0.1 * metaLv('time'), spinMul: 1, enemyMul: 1, tripBonus: 0, rerolls: metaLv('reroll'),
     time: 0, timeMax: 1, curses: [], inv: 0, shots: 0, streak: 0, feed: 0, veilToggle: false, phoenixUsed: false, bhT: 15,
@@ -619,7 +634,7 @@ function die() {
 
 function floorClear(extraText) {
   if (run.demo) { game.demoT = Math.min(game.demoT, 1.2); return; }
-  phase = 'clear'; game.phaseT = 1.15; dopaBoost(0.07);
+  phase = 'clear'; game.phaseT = 1.15; dopaBoost(0.07); planNext();
   const info = run.info;
   const bonus = mode.timed ? Math.floor(Math.max(0, run.time) * 25 * run.floor) : 0;
   addScore(bonus);
@@ -1049,7 +1064,7 @@ const RINGS = {
   hint: 'toca el circuito exterior para disparar · apunta a la flecha blanca',
   bossTag: 'atraviésalo varias veces',
   build(info) {
-    if (info.boss) buildRingBoss(info); else buildRingFloor(1 + Math.floor(info.s * 0.5));
+    if (info.boss) buildRingBoss(info); else buildRingFloor(1 + Math.floor(info.s * 0.35));
     run.charges = run.maxCharges + (cursed('drought') ? 1 : 0);
     for (let i = 0; i < run.balls; i++) balls.push(ringBall(i));
   },
@@ -1753,7 +1768,7 @@ const PLINKO = {
   explode() { for (const p of M.pegs) for (let k = 0; k < 2; k++) spark(p.x, p.y, 48, 300, 0.6); M.pegs = []; M.bins = []; },
 };
 
-const MODES = { rings: RINGS, breakout: BREAKOUT, swarm: SWARM, plinko: PLINKO, multiply: MULTIPLY, merge: MERGE, chain: CHAIN, hole: HOLE };
+const MODES = { rings: RINGS, breakout: BREAKOUT, swarm: SWARM, plinko: PLINKO, multiply: MULTIPLY, merge: MERGE, chain: CHAIN, hole: HOLE, crowd: RUNNER_CROWD, sizes: RUNNER_SIZES };
 
 // ---------------------------------------------------------------- bucle
 function update(rdt) {
@@ -1811,6 +1826,12 @@ function update(rdt) {
         floatText('🕳️ ¡AGUJERO NEGRO!', 0, 0, 30, '#c58bff'); fx.shake = 20;
       }
     }
+  }
+  // barra de mutación: se llena con TIEMPO de dopamina alta; al llenarse, el juego muta al acabar el piso
+  if (!run.demo && phase === 'play' && !run.info.bonus) {
+    const fillT = run.cur === CORE ? 100 : 45;
+    if (game.dopa >= 0.5) game.mut = Math.min(1, game.mut + rdt / fillT * (game.frenzy > 0 ? 2 : 1));
+    else if (game.dopa < 0.3) game.mut = Math.max(0, game.mut - rdt / 300);
   }
   if (run.demo) game.dopa = 0.9;
   else if (phase === 'play' || phase === 'clear') {
@@ -2104,6 +2125,13 @@ function updateHud(rdt) {
   $('#timer').classList.toggle('low', !!h.low && phase === 'play');
   if (run.boss) $('#bossFill').style.width = (run.boss.alive === false ? 0 : (run.boss.hp / run.boss.maxHp)) * 100 + '%';
   $('#hud').style.visibility = run.demo ? 'hidden' : 'visible';
+  const mb = $('#mutBar');
+  mb.style.display = run.demo ? 'none' : 'flex';
+  $('#mutFill').style.height = (game.mut * 100).toFixed(1) + '%';
+  $('#mutPct').textContent = Math.floor(game.mut * 100) + '%';
+  mb.classList.toggle('near', game.mut >= 0.8 && game.mut < 1);
+  mb.classList.toggle('ready', game.mut >= 1);
+  $('#mutLab').textContent = game.mut >= 1 ? 'MUTANDO…' : 'MUTACIÓN';
   $('#mid').style.filter = `saturate(${(0.15 + 0.85 * game.dopa).toFixed(2)})`;
   $('#feverFill').style.width = (game.frenzy > 0 ? game.frenzy / 7 : game.fever) * 100 + '%';
   $('#fever').classList.toggle('on', game.frenzy > 0);
@@ -2195,7 +2223,7 @@ function showMenu() {
   game.demoIdx = 0; game.demoT = 7;
   startStage(0);
   game.displayScore = 0;
-  const nSeen = meta.seen.filter(x => x !== 'breakout').length, seen = nSeen ? `${nSeen}/7` : '';
+  const nSeen = meta.seen.filter(x => x !== 'breakout' && x !== 'hole').length, seen = nSeen ? `${nSeen}/8` : '';
   $('#menuStats').innerHTML = meta.runs ? statBox(meta.best, 'MEJOR PISO') + statBox(fmt(meta.bestScore), 'MEJOR PUNTUACIÓN') + statBox(meta.runs, 'PARTIDAS') + (seen ? statBox(seen, 'JUEGOS VISTOS') : '') : '';
   renderMeta(); renderRelics();
   $('#menu').classList.add('on');
@@ -2207,7 +2235,7 @@ function startRun() {
   particles = []; floaters = []; shockwaves = []; stars = []; beams = []; pulses = [];
   Object.assign(fx, { shake: 0, flash: 0, hurt: 0, hitStop: 0, zoom: 1, timeScale: 1, slowTarget: 1 });
   newRun(false);
-  game.dopa = 0; game.displayScore = 0;
+  game.dopa = 0; game.mut = 0; game.displayScore = 0;
   renderRelics();
   startStage(0);
 }
