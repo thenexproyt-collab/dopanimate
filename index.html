@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Dopamina</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@500;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <canvas id="c"></canvas>
+
+    <div id="hud">
+      <div id="hearts"></div>
+      <div id="mid">
+        <div id="floorN">PISO 1</div>
+        <div id="score">0</div>
+        <div id="timer"><div id="timerFill"></div><span id="timerN">0.0</span></div>
+        <div id="fever"><div id="feverFill"></div></div>
+        <div id="curses"></div>
+        <div id="boss"><div id="bossName"></div><div id="bossBar"><div id="bossFill"></div></div></div>
+      </div>
+    </div>
+    <div id="combo"></div>
+    <div id="banner"></div>
+    <div id="hint"></div>
+    <div id="mutate"><div class="m1">EL JUEGO MUTA</div><div class="m2">AHORA ES</div><div class="m3" id="mutName"></div><div class="m4" id="mutTag"></div></div>
+
+    <div id="vol">
+      <button id="volBtn" aria-label="Volumen">
+        <svg viewBox="0 0 24 24" width="20" height="20"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/>
+          <path class="w1" d="M16 9.5a3.5 3.5 0 0 1 0 5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>
+          <path class="w2" d="M18.5 7a7 7 0 0 1 0 10" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>
+          <path class="x" d="M16 9l5 6M21 9l-5 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+      <div id="volPanel"><input id="volRange" type="range" min="0" max="100" step="1" aria-label="Volumen"><span id="volN">70</span></div>
+    </div>
+
+    <div id="menu" class="screen">
+      <div class="inner">
+        <div class="title">DOPAMINA</div>
+        <div class="sub">escapa de los anillos · no mueras</div>
+        <button class="big" id="playBtn">JUGAR</button>
+        <div class="stats" id="menuStats"></div>
+        <div class="how">
+          <div>Empieza siendo un juego de <b>anillos</b>… y <b>casi cada piso muta en otro</b>.</div>
+          <div><b>8 juegos</b>: anillos, multiplica, fusión, reacción, agujero negro, rompebloques, enjambre y tragaperras.</div>
+          <div>Rompe cosas para llenar la barra de <b>FRENESÍ</b>: x3 puntos y lluvia de bolas.</div>
+          <div><b class="red">Pinchos, bichos y tiempo</b> quitan corazones. Cada piso eliges una carta. Cada acto acaba en jefe.</div>
+        </div>
+        <div class="metaHead">MEJORAS PERMANENTES <span class="shards"></span></div>
+        <div class="meta" id="metaMenu"></div>
+      </div>
+    </div>
+
+    <div id="pick" class="screen">
+      <div class="inner">
+        <div class="pickTitle" id="pickTitle">ELIGE UNA CARTA</div>
+        <div class="cards" id="cards"></div>
+        <button class="ghostBtn" id="rerollBtn">🎲 Cambiar cartas <span></span></button>
+      </div>
+    </div>
+
+    <div id="dead" class="screen">
+      <div class="inner">
+        <div class="deadTitle">HAS CAÍDO</div>
+        <div class="deadFloor">PISO <b id="deadFloor">1</b></div>
+        <div id="record"></div>
+        <div class="stats" id="deadStats"></div>
+        <div id="shardsGain"></div>
+        <button class="big" id="againBtn">OTRA</button>
+        <div class="metaHead">MEJORAS PERMANENTES <span class="shards"></span></div>
+        <div class="meta" id="metaDead"></div>
+      </div>
+    </div>
+  </div>
+  <div id="relics"></div>
+</div>
+<script src="modes.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
