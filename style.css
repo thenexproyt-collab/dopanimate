@@ -263,3 +263,5 @@ button { font-family: inherit; }
   #hint { bottom: auto; top: 184px; font-size: 12px; }
   #combo { top: 214px; }
 }
+
+#combo .m { text-shadow: 0 2px 6px #000a; }

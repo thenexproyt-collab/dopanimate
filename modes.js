@@ -55,9 +55,9 @@ function mlHitBoss(p) {
   if (run.boss) run.boss.hp = Math.max(0, b.hp);
   addScore(10 * run.floor * (1 + Math.floor(M.hits / 100)));
   if (M.hits % 20 === 0) { bumpCombo(); dopaBoost(0.03); Sfx.star(M.hits / 20); onDestroy(p.x, 270, 0.2); }
-  if (M.hits % 100 === 0 && M.t - (M.lastDmgT || -9) > 0.6) {
+  if (M.hits % 100 === 0 && M.t - (M.lastDmgT || -9) > 1.2) {
     M.lastDmgT = M.t;
-    floatText('-' + fmt(M.dmgAcc), p.x, M.yB - 80, 38, '#ffe27a'); M.dmgAcc = 0;
+    floatText('-' + fmt(M.dmgAcc), p.x, M.yB - 80, 30, '#ffe27a'); M.dmgAcc = 0;
     shockwaves.push({ R: 10, t: 0, hue: 48, cx: p.x, cy: M.yB - 30 }); fx.shake = Math.max(fx.shake, 9); Sfx.jackpot(8);
   }
   if (Math.random() < 0.1) for (let k = 0; k < 3; k++) spark(p.x, M.yB - 40, b.hue, 260, 0.35);
@@ -144,7 +144,7 @@ const MULTIPLY = {
             dopaBoost(0.0012 * g.k);
             if (g.passed >= g.need && g.k < 9) {
               g.k++; g.passed = 0; g.need = 30 + 18 * g.k; g.up = 1; g.flash = 1.5;
-              floatText(`¡x${g.k + 1}!`, g.x, g.y - 34, 40, `hsl(${hz(hz(mlHue(g)))},${sv(100)}%,70%)`);
+              floatText(`¡x${g.k + 1}!`, g.x, g.y - 34, 30, `hsl(${hz(hz(mlHue(g)))},${sv(100)}%,70%)`);
               shockwaves.push({ R: 10, t: 0, hue: mlHue(g), cx: g.x, cy: g.y });
               for (let q = 0; q < 24; q++) spark(g.x + rand(-g.w / 2, g.w / 2), g.y, mlHue(g), 360, 0.6);
               Sfx.jackpot(g.k >= 4 ? 8 : 3); fx.shake = Math.max(fx.shake, 8); dopaBoost(0.09); bumpCombo();

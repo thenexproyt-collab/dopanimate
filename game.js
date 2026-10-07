@@ -394,7 +394,7 @@ function adaptQuality(dt, work) {
 }
 
 // ---------------------------------------------------------------- paleta: un color principal por juego
-const ACCENT = { rings: 190, multiply: 205, crowd: 215, sizes: 140, merge: 318, chain: 265, swarm: 160, plinko: 285, breakout: 190, hole: 270 };
+const ACCENT = { multiply: 218, rings: 185, swarm: 150, sizes: 95, crowd: 268, merge: 322, chain: 30, plinko: 48, breakout: 185, hole: 270 };
 let accent = 200;
 function hz(h) {
   h = ((h % 360) + 360) % 360;
@@ -607,7 +607,8 @@ function startFrenzy() {
   if (mode.frenzy) mode.frenzy();
 }
 function floatText(text, x, y, size = 16, color = '#fff') {
-  if (floaters.length > Q.flo && size < 28) return;   // que no se amontonen los números pequeños
+  if (floaters.length > Q.flo && size < 28) return;
+  if (size >= 28) { let big = 0; for (const f of floaters) if (f.size >= 28 && f.life > 0.4) big++; if (big >= 3) return; }   // como mucho 3 textos grandes a la vez   // que no se amontonen los números pequeños
   floaters.push({ text, x, y, size, color, life: 1, vy: -40 - size * 1.5 });
   if (floaters.length > Q.flo * 2) floaters.shift();
 }
@@ -624,11 +625,12 @@ function updateCombo(bump) {
   const el = $('#combo');
   if (game.combo >= 2) {
     const word = COMBO_WORDS.filter(w => game.combo >= w[0]).pop();
+    if (word && word[1] !== game.lastWord) { game.lastWord = word[1]; game.comboWordT = 1.1; }   // la palabra sale un momento al subir de nivel
     const hue = (game.combo * 25) % 360;
-    el.innerHTML = `<span class="m${bump ? ' bump' : ''}" style="color:hsl(${hz(hz(hue))},${sv(100)}%,65%);text-shadow:0 0 20px hsl(${hz(hz(hue))},${sv(100)}%,50%)">` +
-      `${word ? word[1] + ' · ' : ''}COMBO x${comboMult(game.combo)}</span>`;
+    el.innerHTML = `<span class="m${bump ? ' bump' : ''}" style="color:hsl(${hz(hue)},${sv(100)}%,70%)">` +
+      `${word && game.comboWordT > 0 ? word[1] + ' · ' : ''}x${comboMult(game.combo)}</span>`;
     el.classList.add('on');
-  } else el.classList.remove('on');
+  } else { el.classList.remove('on'); game.lastWord = ''; game.comboWordT = 0; }
 }
 function banner(big, small, danger) {
   const el = $('#banner');
@@ -1910,6 +1912,7 @@ function update(rdt) {
   Sfx.mood(game.dopa, game.frenzy > 0, !!run.boss);
 
   if (game.comboTimer > 0) { game.comboTimer -= dt; if (game.comboTimer <= 0) { game.combo = 0; updateCombo(); } }
+  if (game.comboWordT > 0) { game.comboWordT -= rdt; if (game.comboWordT <= 0) updateCombo(); }
   game.almostCd -= rdt;
   game.denyT = Math.max(0, game.denyT - rdt);
   if (game.hintT > 0) { game.hintT -= rdt; if (game.hintT <= 0) $('#hint').classList.remove('show'); }
