@@ -52,7 +52,7 @@ const Sfx = (() => {
   const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
 
   function init() {
-    if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
+    if (ac) { if (ac.state !== 'running') { try { ac.resume(); } catch (e) { } } return; }   // iOS también la deja en 'interrupted'
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     ac = new AC();
@@ -2339,7 +2339,10 @@ function applyVolume() {
 $('#volBtn').addEventListener('click', () => { Sfx.init(); volEl.classList.toggle('open'); });
 volRange.addEventListener('input', () => { Sfx.init(); volume = +volRange.value; applyVolume(); });
 volRange.addEventListener('change', () => Sfx.buy());
-document.addEventListener('pointerdown', () => Sfx.init(), { once: true });
+['touchend', 'click', 'pointerup'].forEach(ev => document.addEventListener(ev, () => Sfx.init(), { passive: true }));   // iOS solo desbloquea el audio con estos
+document.addEventListener('gesturestart', e => e.preventDefault());                                                   // sin zoom con dos dedos
+document.addEventListener('visibilitychange', () => { if (!document.hidden) Sfx.init(); });
+try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { }                          // suena con el interruptor de silencio
 applyVolume();
 
 new ResizeObserver(resize).observe(canvas);

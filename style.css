@@ -108,7 +108,7 @@ button { font-family: inherit; }
 
 /* ---------- pantallas ---------- */
 .screen { position: absolute; inset: 0; z-index: 20; display: none; overflow-y: auto;
-  background: radial-gradient(ellipse at center, #05050ccc, #020205f2); backdrop-filter: blur(3px); }
+  background: radial-gradient(ellipse at center, #05050ccc, #020205f2);  }
 .screen.on { display: block; animation: fadein .3s ease-out; }
 @keyframes fadein { from { opacity: 0; } }
 .screen .inner { min-height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -265,3 +265,14 @@ button { font-family: inherit; }
 }
 
 #combo .m { text-shadow: 0 2px 6px #000a; }
+
+/* ---------- iPhone / Safari ---------- */
+html, body { overscroll-behavior: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; -webkit-text-size-adjust: 100%; }
+body { position: fixed; inset: 0; }
+#hud { padding-top: env(safe-area-inset-top); }
+#vol { top: calc(12px + env(safe-area-inset-top)); right: calc(12px + env(safe-area-inset-right)); }
+#hearts { top: calc(8px + env(safe-area-inset-top)); }
+#mutBar { top: calc(72px + env(safe-area-inset-top)); }
+#relics { padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
+.screen .inner { padding-top: calc(60px + env(safe-area-inset-top)); padding-bottom: calc(30px + env(safe-area-inset-bottom)); }
+@media (max-width: 520px) { #hearts { top: calc(126px + env(safe-area-inset-top)); } #hint { top: calc(184px + env(safe-area-inset-top)); } #combo { top: calc(214px + env(safe-area-inset-top)); } }
