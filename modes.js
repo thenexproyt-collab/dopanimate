@@ -83,10 +83,10 @@ const MULTIPLY = {
     M.gates.forEach((g, i) => { g.bit = 1 << i; });
     for (let i = 0; i < 4; i++) for (let k = 0; k < 3; k++) M.bumpers.push({ x: rand(-250, 250), y: yT + (yB - yT) * (0.29 + i * 0.18) + rand(-12, 12), r: rand(9, 13), flash: 0 });
     const bi = (w >> 0) % ML_BOSSES.length, bd = ML_BOSSES[bi];
-    const hp = Math.round(30000 * (1 + 0.3 * w) * (info.boss ? 2.2 : 1));
+    const hp = Math.round(18000 * (1 + 0.3 * w) * (info.boss ? 1.6 : 1));
     M.boss = { name: bd.name, hue: bd.hue, hp, maxHp: hp };
     if (info.boss) run.boss = { name: bd.name, hp, maxHp: hp, alive: true, hue: bd.hue };
-    run.timeMax = run.time = (info.boss ? 105 : 75) * run.timeMul;
+    run.timeMax = run.time = 60 * run.timeMul;
   },
   tap(ang, wx) {
     M.tx = clamp(wx, -265, 265);
@@ -166,6 +166,7 @@ const MULTIPLY = {
     }
     M.drops = M.drops.filter(p => !p.dead).concat(add);
     if (!M.done && M.boss.hp <= 0) mlWin();
+    else if (!M.done && game.mut >= 1 && phase === 'play' && !run.demo) { M.boss.hp = 0; if (run.boss) run.boss.hp = 0; banner('¡CAMBIO DE JUEGO!', 'el jefe estalla', false); mlWin(); }
   },
   ai() {
     const g = M.gates.filter(q => q.kind === 'mult' || q.kind === 'turret').sort((a, b) => (b.kind === 'turret') - (a.kind === 'turret') || b.k - a.k || a.y - b.y)[0];
@@ -368,7 +369,7 @@ const MERGE = {
     M.next = mgNextTier(); M.after = mgNextTier();
     // arranca con fruta en el suelo para que haya fusiones desde el primer segundo
     for (let k = 0; k < 7; k++) { const t = Math.floor(rand(3)); M.fruits.push(mgMake(t, -150 + k * 50, BOX.f - FR[t].r - 1)); M.best = Math.max(M.best, t); }
-    run.timeMax = run.time = (65 + d * 3) * run.timeMul;
+    run.timeMax = run.time = (80 + d * 3) * run.timeMul;
   },
   tap(ang, wx) {
     M.aimX = clamp(wx, BOX.l + 24, BOX.r - 24);

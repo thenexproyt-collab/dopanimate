@@ -633,6 +633,7 @@ function die() {
 }
 
 function floorClear(extraText) {
+  if (!run.demo && phase !== 'play') return;   // ya se está cerrando este piso
   if (run.demo) { game.demoT = Math.min(game.demoT, 1.2); return; }
   phase = 'clear'; game.phaseT = 1.15; dopaBoost(0.07); planNext();
   const info = run.info;
@@ -1827,12 +1828,15 @@ function update(rdt) {
       }
     }
   }
-  // barra de mutación: se llena con TIEMPO de dopamina alta; al llenarse, el juego muta al acabar el piso
+  // barra de mutación: MULTIPLICA dura como mucho 20 s (15 s si vas con dopamina alta); los demás formatos 50-75 s.
+  // Siempre avanza, así nadie se aburra: el jugador está estimulado todo el rato.
   if (!run.demo && phase === 'play' && !run.info.bonus) {
-    const fillT = run.cur === CORE ? 100 : 45;
-    if (game.dopa >= 0.5) game.mut = Math.min(1, game.mut + rdt / fillT * (game.frenzy > 0 ? 2 : 1));
-    else if (game.dopa < 0.3) game.mut = Math.max(0, game.mut - rdt / 300);
-  }
+    const core = run.cur === CORE, base = core ? 1 / 20 : 1 / 75;
+    game.mut = Math.min(1, game.mut + rdt * base * (game.dopa >= 0.5 ? (core ? 1.3 : 1.5) : 1) * (game.frenzy > 0 ? 1.5 : 1));
+    // si la barra lleva llena un rato y el piso no acaba (fusión lenta, etc.), se corta: que nadie se aburra
+    game.fullT = game.mut >= 1 ? (game.fullT || 0) + rdt : 0;
+    if (game.fullT > 6 && !core && !run.info.boss) { game.fullT = 0; banner('¡CAMBIO DE JUEGO!', 'sobradamente bien', false); floorClear('cambio de juego'); }
+  } else game.fullT = 0;
   if (run.demo) game.dopa = 0.9;
   else if (phase === 'play' || phase === 'clear') {
     if (game.frenzy > 0) game.dopa = 1;
