@@ -218,19 +218,19 @@ function rnBubble(text, x, y, hue, sc) {
   ctx.font = `900 ${Math.round(26 * sc)}px Rubik, sans-serif`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   const w = ctx.measureText(text).width + 24 * sc, h = 34 * sc;
-  ctx.globalAlpha = 0.92; ctx.fillStyle = `hsl(${hue},80%,42%)`; rnRoundRect(x - w / 2, y - h / 2, w, h, 12 * sc); ctx.fill();
+  ctx.globalAlpha = 0.92; ctx.fillStyle = `hsl(${hz(hz(hue))},${sv(80)}%,42%)`; rnRoundRect(x - w / 2, y - h / 2, w, h, 12 * sc); ctx.fill();
   ctx.globalAlpha = 1; ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 2 * sc; ctx.stroke();
   ctx.fillStyle = '#fff'; ctx.fillText(text, x, y + 1);
 }
 // la multitud: bolitas en espiral de girasol, más cerca = más grandes
 function rnDrawCrowd(ax, ay, n, hue, sc, Rmax) {
   if (n < 1) return 0;
-  const m = Math.min(260, Math.max(1, Math.floor(n))), R = Math.min(Rmax, 7.2 * Math.sqrt(n)) * sc;
+  const m = Math.min(Math.round(260 * Math.max(0.45, Q.drops)), Math.max(1, Math.floor(n))), R = Math.min(Rmax, 7.2 * Math.sqrt(n)) * sc;
   const u = clamp(R / Math.sqrt(m) * 0.62, 2.4 * sc, 10 * sc), pts = [];
   for (let i = 0; i < m; i++) { const a = i * 2.39996, rr = R * Math.sqrt((i + 0.5) / m); pts.push([Math.cos(a) * rr, Math.sin(a) * rr * 0.6]); }
   pts.sort((p, q) => p[1] - q[1]);
-  for (const pass of [0, 1]) {
-    ctx.fillStyle = pass ? `hsl(${hue},95%,60%)` : `hsl(${hue},100%,55%)`;
+  for (const pass of (Q.halo ? [0, 1] : [1])) {
+    ctx.fillStyle = pass ? `hsl(${hz(hz(hue))},${sv(95)}%,60%)` : `hsl(${hz(hz(hue))},${sv(100)}%,55%)`;
     ctx.globalAlpha = pass ? 1 : 0.28; ctx.beginPath();
     for (const [ox, oy] of pts) {
       const pers = 1 + 0.14 * oy / Math.max(R, 1), r = u * pers * (pass ? 1 : 2);
@@ -298,9 +298,9 @@ function rnDrawGate(e, dist) {
     const boost = picked ? e.flash * 0.35 : 0;
     ctx.globalAlpha = 0.93 * fade * (e.done && !picked ? 0.4 : 1);
     const gr = ctx.createLinearGradient(0, y - h, 0, y);
-    gr.addColorStop(0, `hsl(${hue},92%,${(good ? 64 : 58) + boost * 30}%)`); gr.addColorStop(1, `hsl(${hue},85%,${(good ? 38 : 32) + boost * 20}%)`);
+    gr.addColorStop(0, `hsl(${hz(hz(hue))},${sv(92)}%,${(good ? 64 : 58) + boost * 30}%)`); gr.addColorStop(1, `hsl(${hz(hz(hue))},${sv(85)}%,${(good ? 38 : 32) + boost * 20}%)`);
     ctx.fillStyle = gr; ctx.fillRect(x0, y - h, w, h);
-    ctx.globalAlpha = fade; ctx.strokeStyle = `hsl(${hue},100%,82%)`; ctx.lineWidth = 3 * sc; ctx.strokeRect(x0, y - h, w, h);
+    ctx.globalAlpha = fade; ctx.strokeStyle = `hsl(${hz(hz(hue))},${sv(100)}%,82%)`; ctx.lineWidth = 3 * sc; ctx.strokeRect(x0, y - h, w, h);
     ctx.fillStyle = 'rgba(255,255,255,.18)'; ctx.fillRect(x0, y - h, w, h * 0.22);
     ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.lineWidth = 5 * sc; ctx.strokeStyle = 'rgba(0,0,0,.45)';

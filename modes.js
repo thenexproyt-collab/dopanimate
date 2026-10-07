@@ -138,13 +138,13 @@ const MULTIPLY = {
           p.mask |= g.bit; g.flash = 1; g.passed++;
           if (g.kind === 'mult') {
             p.hue = (p.hue + 28) % 360;
-            for (let c = 0; c < g.k && M.drops.length + add.length < M.cap; c++)
+            for (let c = 0; c < g.k && M.drops.length + add.length < M.cap * Q.drops; c++)
               add.push({ x: p.x + rand(-7, 7), y: g.y + rand(-2, 6), vx: p.vx + rand(-120, 120), vy: p.vy * rand(0.7, 1), mask: p.mask, hue: p.hue });
             if (Math.random() < 0.3) Sfx.peg(8 + g.k * 3 + (g.passed % 6));
             dopaBoost(0.0012 * g.k);
             if (g.passed >= g.need && g.k < 9) {
               g.k++; g.passed = 0; g.need = 30 + 18 * g.k; g.up = 1; g.flash = 1.5;
-              floatText(`¡x${g.k + 1}!`, g.x, g.y - 34, 40, `hsl(${mlHue(g)},100%,70%)`);
+              floatText(`¡x${g.k + 1}!`, g.x, g.y - 34, 40, `hsl(${hz(hz(mlHue(g)))},${sv(100)}%,70%)`);
               shockwaves.push({ R: 10, t: 0, hue: mlHue(g), cx: g.x, cy: g.y });
               for (let q = 0; q < 24; q++) spark(g.x + rand(-g.w / 2, g.w / 2), g.y, mlHue(g), 360, 0.6);
               Sfx.jackpot(g.k >= 4 ? 8 : 3); fx.shake = Math.max(fx.shake, 8); dopaBoost(0.09); bumpCombo();
@@ -178,11 +178,11 @@ const MULTIPLY = {
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineCap = 'butt';
     for (const g of M.gates) {
       const hue = mlHue(g), lit = g.flash, used = g.kind === 'used';
-      const col = `hsl(${hue},100%,${52 + lit * 22}%)`, bh = 34 + g.up * 10;
+      const col = `hsl(${hz(hz(hue))},${sv(100)}%,${52 + lit * 22}%)`, bh = 34 + g.up * 10;
       ctx.globalAlpha = (used ? 0.05 : 0.14) + lit * 0.3 + fx.beat * 0.1; ctx.fillStyle = col;
       ctx.fillRect(g.x - g.w / 2 - 12, g.y - bh - 10, g.w + 24, bh + 22);
       ctx.globalCompositeOperation = 'source-over';
-      ctx.globalAlpha = used ? 0.4 : 0.92; ctx.fillStyle = `hsl(${hue},85%,${34 + lit * 14}%)`;
+      ctx.globalAlpha = used ? 0.4 : 0.92; ctx.fillStyle = `hsl(${hz(hz(hue))},${sv(85)}%,${34 + lit * 14}%)`;
       ctx.fillRect(g.x - g.w / 2 - 6 * g.up, g.y - bh, g.w + 12 * g.up, bh + 4);
       ctx.globalAlpha = used ? 0.4 : 1; ctx.fillStyle = col;
       ctx.fillRect(g.x - g.w / 2, g.y - 2, g.w, 6);
@@ -206,11 +206,11 @@ const MULTIPLY = {
     // el JEFE de abajo: dientes, ojos que siguen al cañón y barra de vida
     const b = M.boss, hpf = clamp(b.hp / b.maxHp, 0, 1), hot = 1 - hpf, yb = M.yB, y0 = yb - 42;
     ctx.globalCompositeOperation = 'source-over';
-    ctx.globalAlpha = 0.95; ctx.fillStyle = `hsl(${b.hue},${60 + hot * 30}%,${16 + M.bossFlash * 34}%)`;
+    ctx.globalAlpha = 0.95; ctx.fillStyle = `hsl(${hz(b.hue)},${60 + hot * 30}%,${16 + M.bossFlash * 34}%)`;
     ctx.beginPath(); ctx.moveTo(-290, yb); ctx.lineTo(-290, y0 + 10);
     for (let k = 0; k < 30; k++) { const x = -290 + k * 19.33; ctx.lineTo(x + 9.7, y0 + Math.sin(game.t * 4 + k) * 1.5); ctx.lineTo(x + 19.33, y0 + 10); }
     ctx.lineTo(290, yb); ctx.closePath(); ctx.fill();
-    ctx.globalAlpha = 1; ctx.strokeStyle = `hsl(${b.hue},100%,${60 + M.bossFlash * 30}%)`; ctx.lineWidth = 3; ctx.stroke();
+    ctx.globalAlpha = 1; ctx.strokeStyle = `hsl(${hz(hz(b.hue))},${sv(100)}%,${60 + M.bossFlash * 30}%)`; ctx.lineWidth = 3; ctx.stroke();
     for (const s of [-1, 1]) {
       const ex = s * 105, ey = y0 + 24, look = clamp((M.cannonX - ex) / 260, -1, 1) * 5;
       ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(ex, ey, 11, 0, TAU); ctx.fill();
@@ -224,10 +224,10 @@ const MULTIPLY = {
   drawFront() {
     const groups = {};
     for (const p of M.drops) (groups[Math.round(p.hue / 30) % 12] = groups[Math.round(p.hue / 30) % 12] || []).push(p);
-    for (const pass of [0, 1]) {
+    for (const pass of (Q.halo ? [0, 1] : [1])) {
       ctx.globalAlpha = pass ? 1 : 0.22;
       for (const h in groups) {
-        ctx.fillStyle = `hsl(${h * 30},100%,${pass ? 62 : 55}%)`; ctx.beginPath();
+        ctx.fillStyle = `hsl(${hz(hz(h * 30))},${sv(100)}%,${pass ? 62 : 55}%)`; ctx.beginPath();
         const r = pass ? 4 : 9;
         for (const p of groups[h]) { ctx.moveTo(p.x + r, p.y); ctx.arc(p.x, p.y, r, 0, TAU); }
         ctx.fill();
@@ -293,7 +293,7 @@ function mgMerge(a, b) {
   bumpCombo();
   const v = 40 * Math.pow(2, tier) * run.floor * comboMult(game.combo);
   addScore(v); dopaBoost(0.07 + tier * 0.02);
-  floatText('+' + fmt(v * run.scoreMul), x, y - f.r, clamp(18 + tier * 4, 18, 58), `hsl(${hue},100%,72%)`);
+  floatText('+' + fmt(v * run.scoreMul), x, y - f.r, clamp(18 + tier * 4, 18, 58), `hsl(${hz(hz(hue))},${sv(100)}%,72%)`);
   blob(x, y, hue, 10 + tier * 4, 4 + tier);
   for (let k = 0; k < 8 + tier * 2; k++) spark(x, y, hue, 220 + tier * 40, 0.5);
   shockwaves.push({ R: f.r, t: 0.3, hue, cx: x, cy: y });
@@ -436,7 +436,7 @@ const MERGE = {
       ctx.globalAlpha = alpha;
       const g = ctx.createRadialGradient(x - r * 0.35, y - r * 0.4, r * 0.1, x, y, r);
       if (f.tier < 0) { g.addColorStop(0, '#666'); g.addColorStop(1, '#161616'); }
-      else { g.addColorStop(0, `hsl(${hue},95%,76%)`); g.addColorStop(1, `hsl(${hue},80%,38%)`); }
+      else { g.addColorStop(0, `hsl(${hz(hz(hue))},${sv(95)}%,76%)`); g.addColorStop(1, `hsl(${hz(hz(hue))},${sv(80)}%,38%)`); }
       ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
       ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 2.5; ctx.stroke();
       drawEmoji(f.tier < 0 ? '💣' : FR[f.tier].e, x, y + r * 0.04, r * 1.35, 0);
@@ -556,12 +556,12 @@ const CHAIN = {
     ctx.beginPath(); ctx.arc(0, 0, 322, 0, TAU); ctx.stroke();
     for (const b of M.booms) {
       const k = clamp(b.t / (b.life + 0.25), 0, 1);
-      ctx.globalAlpha = 0.2 * (1 - k * 0.5); ctx.fillStyle = `hsl(${b.hue},100%,60%)`;
+      ctx.globalAlpha = 0.2 * (1 - k * 0.5); ctx.fillStyle = `hsl(${hz(hz(b.hue))},${sv(100)}%,60%)`;
       ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, TAU); ctx.fill();
-      ctx.globalAlpha = 0.9 * (1 - k * 0.6); ctx.strokeStyle = `hsl(${b.hue},100%,78%)`; ctx.lineWidth = 3; ctx.stroke();
+      ctx.globalAlpha = 0.9 * (1 - k * 0.6); ctx.strokeStyle = `hsl(${hz(hz(b.hue))},${sv(100)}%,78%)`; ctx.lineWidth = 3; ctx.stroke();
     }
     for (const o of M.dots) {
-      const col = o.type === 'gold' ? '#ffd34d' : o.type === 'mega' ? '#ffffff' : `hsl(${o.hue},100%,62%)`, R = o.r * (o.type === 'mega' ? 1.7 : 1);
+      const col = o.type === 'gold' ? '#ffd34d' : o.type === 'mega' ? '#ffffff' : `hsl(${hz(hz(o.hue))},${sv(100)}%,62%)`, R = o.r * (o.type === 'mega' ? 1.7 : 1);
       ctx.globalAlpha = 0.3; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(o.x, o.y, R * 2.2, 0, TAU); ctx.fill();
       ctx.globalAlpha = 1; ctx.beginPath(); ctx.arc(o.x, o.y, R, 0, TAU); ctx.fill();
     }
@@ -712,7 +712,7 @@ const HOLE = {
     const h = M.h, R = h.dr * (1 + h.kick * 0.1);
     for (let k = 0; k < 10; k++) {
       const a = game.t * 3.2 + k * TAU / 10;
-      ctx.globalAlpha = 0.75; ctx.strokeStyle = `hsl(${(k * 36 + game.t * 120) % 360},100%,62%)`; ctx.lineWidth = 3 + R * 0.07;
+      ctx.globalAlpha = 0.75; ctx.strokeStyle = `hsl(${hz(hz((k * 36 + game.t * 120) % 360))},${sv(100)}%,62%)`; ctx.lineWidth = 3 + R * 0.07;
       ctx.beginPath(); ctx.arc(h.x, h.y, R * (1.16 + 0.05 * Math.sin(game.t * 6 + k)), a, a + 0.5); ctx.stroke();
     }
     ctx.globalAlpha = 0.18; ctx.fillStyle = '#b77dff'; ctx.beginPath(); ctx.arc(h.x, h.y, R * 2.6, 0, TAU); ctx.fill();

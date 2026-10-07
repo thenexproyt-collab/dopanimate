@@ -255,3 +255,11 @@ button { font-family: inherit; }
   #hearts { top: 126px; left: 0; right: 0; max-width: none; justify-content: center; gap: 0 6px; pointer-events: none; }
   .heart { font-size: 46px; min-width: 40px; }
 }
+
+/* ---------- móvil: menos ruido ---------- */
+#combo { font-size: clamp(15px, 4.6vw, 22px); white-space: nowrap; top: 205px; }
+#combo .m { max-width: 92vw; }
+@media (max-width: 520px) {
+  #hint { bottom: auto; top: 184px; font-size: 12px; }
+  #combo { top: 214px; }
+}

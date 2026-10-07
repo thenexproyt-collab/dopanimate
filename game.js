@@ -44,7 +44,7 @@ const META = [
 
 // ---------------------------------------------------------------- audio: efectos + música generativa
 const Sfx = (() => {
-  let ac = null, master = null, musicBus = null, musicLP = null, analyser = null, noiseBuf = null, volume = 0.7;
+  let ac = null, master = null, musicBus = null, musicLP = null, analyser = null, noiseBuf = null, volume = 0.7, light = false;
   let windowStart = 0, voices = 0;
   const gainFor = v => 0.8 * v * v;
   const SCALE = [0, 2, 4, 7, 9];
@@ -73,7 +73,7 @@ const Sfx = (() => {
     if (!ac) return false;
     const now = ac.currentTime;
     if (now - windowStart > 0.05) { windowStart = now; voices = 0; }
-    if (voices + n > 7) return false;
+    if (voices + n > (light ? 4 : 7)) return false;
     voices += n; return true;
   }
   function tone(f, dur, type = 'sine', vol = 0.2, slide = 0, when = 0, bus = master, at) {
@@ -122,7 +122,7 @@ const Sfx = (() => {
     const g = ac.createGain();
     g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.012);
     g.gain.setValueAtTime(vol, t + Math.max(0.02, dur * 0.8)); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    for (const det of [-16, 16]) {
+    for (const det of (light ? [0] : [-16, 16])) {
       const o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.detune.value = det;
       o.connect(lp); o.start(t); o.stop(t + dur + 0.05);
     }
@@ -132,7 +132,7 @@ const Sfx = (() => {
     const g = ac.createGain();
     g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(vol, t + 0.35);
     g.gain.setValueAtTime(vol, t + dur * 0.7); g.gain.linearRampToValueAtTime(0.0001, t + dur);
-    for (const det of [-9, 9]) {
+    for (const det of (light ? [0] : [-9, 9])) {
       const o = ac.createOscillator(); o.type = 'triangle'; o.frequency.value = mtof(m); o.detune.value = det;
       o.connect(g); o.start(t); o.stop(t + dur + 0.05);
     }
@@ -176,7 +176,7 @@ const Sfx = (() => {
     }
     // pad, arpegio y lead: solo cuando el mundo ya tiene color
     if (L > 0.35 && i === 0 && bar % 2 === 0) {
-      for (const k of [0, 2, 4]) pad(deg(prog + k) + 12, spb * 32, t, 0.012 + 0.022 * L);
+      for (const k of (light ? [0] : [0, 2, 4])) pad(deg(prog + k) + 12, spb * 32, t, (light ? 0.03 : 0.012) + 0.022 * L);
     }
     if (L > 0.62 && ARPP[i] === 'x') {
       tone(mtof(deg(prog + ARPN[(i + bar * 3) % 8]) + 24), spb * 0.9, S.lead, 0.016 + 0.03 * (L - 0.6), 0, 0, musicBus, t);
@@ -200,6 +200,7 @@ const Sfx = (() => {
   return {
     init,
     setVolume(v) { volume = v; if (master) master.gain.setTargetAtTime(gainFor(v), ac.currentTime, 0.02); },
+    setLight(v) { light = !!v; },
     music(name) { pending = FLAVOR[name] || FLAVOR.rings; startSeq(); },
     probe() {
       if (!analyser) return null;
@@ -366,6 +367,69 @@ const ctx = canvas.getContext('2d');
 const darkC = document.createElement('canvas'), darkCtx = darkC.getContext('2d');
 let W = 0, H = 0, DPR = 1, viewScale = 1;
 
+// ---------------------------------------------------------------- calidad adaptable (para móviles flojos)
+// 4 niveles: baja la resolución, las partículas y los adornos si el teléfono no llega a ~40 fps; sube si le sobra.
+const QTIERS = [
+  { dpr: 2, part: 900, flo: 22, trail: 22, drops: 1, halo: true, vign: true, light: false },
+  { dpr: 1.5, part: 500, flo: 16, trail: 14, drops: 0.7, halo: true, vign: true, light: false },
+  { dpr: 1.15, part: 260, flo: 12, trail: 8, drops: 0.45, halo: false, vign: true, light: true },
+  { dpr: 0.9, part: 140, flo: 8, trail: 4, drops: 0.3, halo: false, vign: false, light: true },
+];
+const Q = Object.assign({ tier: 0, ema: 16.7, work: 3, cool: 3000, fastT: 0, ups: 0 }, QTIERS[0]);
+const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && Math.min(screen.width, screen.height) < 900);
+function setTier(t) {
+  t = clamp(t | 0, 0, QTIERS.length - 1); Q.tier = t; Object.assign(Q, QTIERS[t]);
+  try { localStorage.setItem('dopamina_q', t); } catch (e) { }
+  resize(); Sfx.setLight(Q.light);
+}
+function adaptQuality(dt, work) {
+  if (dt > 250) return;                                   // pestaña dormida o parón: no cuenta
+  Q.ema += (dt - Q.ema) * 0.06; Q.work += (work - Q.work) * 0.06; Q.cool -= dt;
+  if (Q.cool > 0 || document.hidden) return;
+  if (Q.ema > 24 && Q.tier < 3) { setTier(Q.tier + 1); Q.cool = 2500; Q.fastT = 0; Q.ema = 17; }
+  else if (Q.ema < 18.5 && Q.work < 6 && Q.tier > 0 && Q.ups < 2) {
+    Q.fastT += dt;
+    if (Q.fastT > 8000) { setTier(Q.tier - 1); Q.ups++; Q.cool = 6000; Q.fastT = 0; }
+  } else Q.fastT = 0;
+}
+
+// ---------------------------------------------------------------- paleta: un color principal por juego
+const ACCENT = { rings: 190, multiply: 205, crowd: 215, sizes: 140, merge: 318, chain: 265, swarm: 160, plinko: 285, breakout: 190, hole: 270 };
+let accent = 200;
+function hz(h) {
+  h = ((h % 360) + 360) % 360;
+  if (h >= 340 || h <= 22 || (h >= 38 && h <= 56)) return Math.round(h);   // rojo = peligro, dorado = premio: no se tocan
+  return Math.round((accent + (h / 360 - 0.5) * 56 + 360) % 360);
+}
+const sv = s => Math.round(s * (0.45 + 0.55 * game.dopa));
+let bgC = null, bgKey = '';
+function drawBackdrop() {
+  const key = accent + '|' + W + 'x' + H + '|' + DPR;
+  if (key !== bgKey) {
+    bgKey = key; bgC = bgC || document.createElement('canvas'); bgC.width = canvas.width; bgC.height = canvas.height;
+    const b = bgC.getContext('2d'); b.setTransform(DPR, 0, 0, DPR, 0, 0);
+    b.fillStyle = '#06060a'; b.fillRect(0, 0, W, H);
+    const gr = b.createRadialGradient(W / 2, H / 2 + 30, 10, W / 2, H / 2 + 30, Math.max(W, H) * 0.7);
+    gr.addColorStop(0, `hsl(${accent},45%,13%)`); gr.addColorStop(1, 'rgba(6,6,10,0)');
+    b.fillStyle = gr; b.fillRect(0, 0, W, H);
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(bgC, 0, 0);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+const _vig = {};
+function vignette(alpha, color) {          // degradado pequeño guardado una vez y estirado: casi gratis
+  if (!Q.vign) { ctx.globalAlpha = alpha * 0.35; ctx.fillStyle = color; ctx.fillRect(0, 0, W, H); return; }
+  const key = W + 'x' + H;
+  let c = _vig[color];
+  if (!c || c.key !== key) {
+    c = _vig[color] = document.createElement('canvas'); c.key = key;
+    c.width = Math.max(4, Math.round(W / 4)); c.height = Math.max(4, Math.round(H / 4));
+    const x = c.getContext('2d'), gr = x.createRadialGradient(c.width / 2, c.height / 2, Math.min(c.width, c.height) * 0.3, c.width / 2, c.height / 2, Math.max(c.width, c.height) * 0.72);
+    gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, color); x.fillStyle = gr; x.fillRect(0, 0, c.width, c.height);
+  }
+  ctx.globalAlpha = alpha; ctx.drawImage(c, 0, 0, W, H);
+}
+
 const WORLD_R = 345;
 const CIRCUIT_R = 322;
 const RING_T = 3.2;
@@ -383,7 +447,7 @@ Sfx.onBeat(() => { fx.beat = 1; });
 
 function resize() {
   const r = canvas.getBoundingClientRect();
-  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  DPR = Math.min(window.devicePixelRatio || 1, Q.dpr);
   W = r.width; H = r.height;
   canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
   darkC.width = canvas.width; darkC.height = canvas.height;
@@ -476,6 +540,7 @@ function startStage(s) {
   if (run.boss) $('#bossName').textContent = run.boss.name;
   renderHearts();
   Sfx.music(info.mode);
+  accent = ACCENT[info.mode] || 200;
   showHint(mode.hint);
   if (!run.demo) {
     if (info.boss) banner(run.boss.name, mode.bossTag || '', true);
@@ -542,9 +607,9 @@ function startFrenzy() {
   if (mode.frenzy) mode.frenzy();
 }
 function floatText(text, x, y, size = 16, color = '#fff') {
-  if (floaters.length > 28 && size < 28) return;   // que no se amontonen los números pequeños
+  if (floaters.length > Q.flo && size < 28) return;   // que no se amontonen los números pequeños
   floaters.push({ text, x, y, size, color, life: 1, vy: -40 - size * 1.5 });
-  if (floaters.length > 60) floaters.shift();
+  if (floaters.length > Q.flo * 2) floaters.shift();
 }
 const ESCAPE_WORDS = ['¡FUERA!', '¡LIBRE!', '¡ESCAPE!', '¡BOOM!', '¡CRACK!', '¡ADIÓS!'];
 const COMBO_TABLE = [1, 1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25];
@@ -560,7 +625,7 @@ function updateCombo(bump) {
   if (game.combo >= 2) {
     const word = COMBO_WORDS.filter(w => game.combo >= w[0]).pop();
     const hue = (game.combo * 25) % 360;
-    el.innerHTML = `<span class="m${bump ? ' bump' : ''}" style="color:hsl(${hue},100%,65%);text-shadow:0 0 20px hsl(${hue},100%,50%)">` +
+    el.innerHTML = `<span class="m${bump ? ' bump' : ''}" style="color:hsl(${hz(hz(hue))},${sv(100)}%,65%);text-shadow:0 0 20px hsl(${hz(hz(hue))},${sv(100)}%,50%)">` +
       `${word ? word[1] + ' · ' : ''}COMBO x${comboMult(game.combo)}</span>`;
     el.classList.add('on');
   } else el.classList.remove('on');
@@ -661,7 +726,7 @@ function floorClear(extraText) {
 function spark(x, y, hue, speed, life) {
   const a = rand(TAU), s = rand(0.3, 1) * speed;
   particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life, max: life, hue, len: 3, rot: 0, vr: 0, kind: 0 });
-  if (particles.length > 2500) particles.shift();
+  if (particles.length > Q.part) particles.shift();
 }
 function blob(x, y, hue, n, size) {
   for (let k = 0; k < n; k++) {
@@ -679,7 +744,7 @@ function shatterArc(R, start, span, hue, w, omega, gold, maxN = 90) {
       life: rand(0.6, 1.1), max: 1.1, hue, len: R * span / n * 0.8, rot: a + Math.PI / 2, vr: rand(-8, 8), kind: 1, gold, w,
     });
   }
-  if (particles.length > 2500) particles.splice(0, particles.length - 2500);
+  if (particles.length > Q.part) particles.splice(0, particles.length - Q.part);
 }
 
 // ================================================================= MODO 1: ANILLOS
@@ -844,7 +909,7 @@ function breakRing(ring, b, ang) {
   const size = clamp(30 + Math.log10(v + 1) * 4 + (ring.gold ? 12 : 0), 30, 80);
   floatText('+' + fmt(v * run.scoreMul), ex, ey, size, '#ffe27a');
   const word = ring.boss ? '¡ROTO!' : ring.gold ? '¡ORO! +3 s' : perfect ? (run.streak > 1 ? `¡PERFECTO x${run.streak}!` : '¡TIRO PERFECTO!') : pick(ESCAPE_WORDS);
-  floatText(word, ex, ey - size * 0.9, 24, ring.gold ? '#ffd34d' : `hsl(${ring.hue},100%,75%)`);
+  floatText(word, ex, ey - size * 0.9, 24, ring.gold ? '#ffd34d' : `hsl(${hz(hz(ring.hue))},${sv(100)}%,75%)`);
   if (perfect) { Sfx.perfect(run.streak); pulses.push({ a: ang, t: 0, hue: 50, big: true }); }
   if (shot) { b.perfect = false; b.dash = Math.min(b.dash, 0.08); b.scored = true; }
   if (ring.gold) run.time += 3;
@@ -930,7 +995,7 @@ function drawRing(r) {
   const R = r.R * sc, g0 = r.rot + r.gapC;
   const a0 = g0 + r.gap / 2, a1 = g0 - r.gap / 2 + TAU;
   const alpha = r.kind === 'ghost' ? 0.12 + 0.88 * Math.max(0, Math.sin(game.t * 2.4 + r.i)) : 1;
-  const col = r.gold ? 'hsl(46,100%,' : `hsl(${r.hue},95%,`;
+  const col = r.gold ? 'hsl(46,100%,' : `hsl(${hz(hz(r.hue))},${sv(95)}%,`;
   ctx.globalAlpha = (0.13 + r.flash * 0.2 + fx.beat * 0.08) * alpha;
   ctx.strokeStyle = col + '55%)';
   ctx.lineWidth = r.T * 4 + r.flash * 6;
@@ -953,7 +1018,7 @@ function drawRing(r) {
   }
   if (r.reverses) {
     const dir = Math.sign(r.omega) || 1;
-    ctx.fillStyle = `hsl(${r.hue},100%,80%)`; ctx.globalAlpha = 0.8 * alpha;
+    ctx.fillStyle = `hsl(${hz(hz(r.hue))},${sv(100)}%,80%)`; ctx.globalAlpha = 0.8 * alpha;
     for (let k = 1; k <= 3; k++) {
       const a = g0 + Math.PI * (k / 2), c = Math.cos(a), s = Math.sin(a), tc = -s * dir, ts = c * dir;
       ctx.beginPath();
@@ -1046,7 +1111,7 @@ function drawCircuit() {
 function drawPulses(R) {
   for (const p of pulses) {
     const k = p.t / 0.8, off = k * Math.PI * (p.big ? 1 : 0.7);
-    ctx.strokeStyle = `hsl(${p.hue},100%,70%)`;
+    ctx.strokeStyle = `hsl(${hz(hz(p.hue))},${sv(100)}%,70%)`;
     ctx.globalAlpha = 1 - k; ctx.lineWidth = p.big ? 7 : 4;
     for (const s of [-1, 1]) { const a = p.a + off * s; ctx.beginPath(); ctx.arc(0, 0, R, a - 0.12, a + 0.12); ctx.stroke(); }
     ctx.lineWidth = 2;
@@ -1346,7 +1411,7 @@ const BREAKOUT = {
       else if (o.type === 'gold') col = 'hsl(46,100%,60%)';
       else if (o.type === 'bomb') col = `hsl(12,100%,${50 + 15 * Math.sin(game.t * 10)}%)`;
       else if (o.type === 'multi') col = '#e8fbff';
-      else col = `hsl(${o.hue},95%,${o.hp > 1 ? 45 : 60}%)`;
+      else col = `hsl(${hz(hz(o.hue))},${sv(95)}%,${o.hp > 1 ? 45 : 60}%)`;
       ctx.globalAlpha = 0.18 + o.flash * 0.3 + fx.beat * 0.1;
       ctx.strokeStyle = col; ctx.lineWidth = o.th + 8;
       ctx.beginPath(); ctx.arc(0, 0, o.r, a - o.hw, a + o.hw); ctx.stroke();
@@ -1599,9 +1664,9 @@ const SWARM = {
     ctx.beginPath(); ctx.arc(0, 0, ARENA_R, 0, TAU); ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0;
     for (const e of M.enemies) {
       const wob = 1 + 0.12 * Math.sin(game.t * 9 + e.wob);
-      ctx.globalAlpha = 0.25; ctx.fillStyle = `hsl(${e.hue},100%,55%)`;
+      ctx.globalAlpha = 0.25; ctx.fillStyle = `hsl(${hz(hz(e.hue))},${sv(100)}%,55%)`;
       ctx.beginPath(); ctx.arc(e.x, e.y, e.r * 1.7 * wob, 0, TAU); ctx.fill();
-      ctx.globalAlpha = 1; ctx.fillStyle = e.flash > 0 ? '#fff' : `hsl(${e.hue},90%,${e.type === 'tank' ? 40 : 52}%)`;
+      ctx.globalAlpha = 1; ctx.fillStyle = e.flash > 0 ? '#fff' : `hsl(${hz(hz(e.hue))},${sv(90)}%,${e.type === 'tank' ? 40 : 52}%)`;
       ctx.beginPath(); ctx.ellipse(e.x, e.y, e.r * wob, e.r / wob, game.t * 2 + e.wob, 0, TAU); ctx.fill();
       // ojos mirando al núcleo
       const d = Math.hypot(e.x, e.y) || 1, lx = -e.x / d, ly = -e.y / d, px = -ly, py = lx, er = Math.max(2, e.r * 0.28);
@@ -1626,9 +1691,9 @@ const SWARM = {
     const low = run.hp === 1 && !run.demo;
     const pulse = 1 + 0.08 * Math.sin(game.t * 5) + fx.beat * 0.12 + M.coreFlash * 0.3;
     const hue = low ? 350 : 160;
-    ctx.globalAlpha = 0.3; ctx.fillStyle = `hsl(${hue},100%,55%)`;
+    ctx.globalAlpha = 0.3; ctx.fillStyle = `hsl(${hz(hz(hue))},${sv(100)}%,55%)`;
     ctx.beginPath(); ctx.arc(0, 0, CORE_R * 2 * pulse, 0, TAU); ctx.fill();
-    ctx.globalAlpha = 1; ctx.fillStyle = M.coreFlash > 0.5 ? '#fff' : `hsl(${hue},100%,60%)`;
+    ctx.globalAlpha = 1; ctx.fillStyle = M.coreFlash > 0.5 ? '#fff' : `hsl(${hz(hz(hue))},${sv(100)}%,60%)`;
     ctx.beginPath(); ctx.arc(0, 0, CORE_R * pulse, 0, TAU); ctx.fill();
     // bolas que aún puedes lanzar: puntitos orbitando el núcleo
     for (let i = 0; i < M.maxAmmo; i++) {
@@ -1736,7 +1801,7 @@ const PLINKO = {
   ai(dt) { M.aiT = (M.aiT || 0) - dt; if (M.aiT <= 0) { M.aiT = 0.35; this.tap(0, rand(-250, 250)); } },
   drawBack() {
     for (const p of M.pegs) {
-      const col = p.type === 'gold' ? '#ffd34d' : p.type === 'split' ? '#ff7ad9' : `hsl(${(p.row * 25 + game.t * 40) % 360},90%,70%)`;
+      const col = p.type === 'gold' ? '#ffd34d' : p.type === 'split' ? '#ff7ad9' : `hsl(${hz(hz((p.row * 25 + game.t * 40) % 360))},${sv(90)}%,70%)`;
       ctx.globalAlpha = 0.25 + p.flash * 0.5 + fx.beat * 0.15; ctx.fillStyle = col;
       ctx.beginPath(); ctx.arc(p.x, p.y, p.r * (2.4 + p.flash * 2), 0, TAU); ctx.fill();
       ctx.globalAlpha = 1; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, TAU); ctx.fill();
@@ -1787,7 +1852,7 @@ function update(rdt) {
 
   for (const b of balls) {
     b.trail.push(b.x, b.y);
-    if (b.trail.length > 28) b.trail.splice(0, 2);
+    if (b.trail.length > Q.trail) b.trail.splice(0, b.trail.length - Q.trail);
     if (b.glow) b.glow = Math.max(0, b.glow - rdt * 2);
   }
 
@@ -1800,7 +1865,7 @@ function update(rdt) {
   fx.camY += (ty - fx.camY) * Math.min(1, rdt * 6);
   fx.zoom += (fx.zoomTarget - fx.zoom) * Math.min(1, rdt * 6);
   const I = tripI();
-  fx.rot = Math.sin(game.t * 0.37) * 0.1 * I + Math.sin(game.t * 0.11) * 0.05 * I;
+  fx.rot = (Math.sin(game.t * 0.37) * 0.1 + Math.sin(game.t * 0.11) * 0.05) * I * 0.35;
 
   if (phase === 'play') {
     run.age = (run.age || 0) + rdt;
@@ -1878,7 +1943,7 @@ function update(rdt) {
   for (const x of pulses) x.t += rdt;
   pulses = pulses.filter(x => x.t < 0.8);
 
-  const target = scoreTarget();
+  const target = stars.length ? scoreTarget() : null;
   stars = stars.filter((c, i) => {
     c.t += rdt;
     if (c.t < 0) return true;
@@ -1899,9 +1964,13 @@ function update(rdt) {
   fx.hurt = Math.max(0, fx.hurt - rdt * 1.5);
   fx.beat = Math.max(0, fx.beat - rdt * 4);
 }
+let _stCache = null, _stT = -9;
 function scoreTarget() {
-  const cr = canvas.getBoundingClientRect(), r = $('#score').getBoundingClientRect();
-  return { x: r.left + r.width / 2 - cr.left, y: r.top + r.height / 2 - cr.top };
+  if (!_stCache || game.t - _stT > 0.4) {
+    const cr = canvas.getBoundingClientRect(), r = $('#score').getBoundingClientRect();
+    _stCache = { x: r.left + r.width / 2 - cr.left, y: r.top + r.height / 2 - cr.top }; _stT = game.t;
+  }
+  return _stCache;
 }
 
 // ---------------------------------------------------------------- dibujo
@@ -1923,71 +1992,23 @@ function setWorld(sx = 0, sy = 0) {
     DPR * (cx - s * (c * fx.camX - si * fx.camY)), DPR * (cy - s * (si * fx.camX + c * fx.camY)));
 }
 
-// fondo hipnótico: polígonos que nacen del centro, rayos y color que nunca se está quieto
-function drawPsyche(I) {
-  const t = game.t, sides = 3 + ((run.stage || 0) % 5), beat = fx.beat;
-  ctx.lineWidth = 2 + 8 * I;
-  for (let i = 0; i < 14; i++) {
-    const r = (i * 38 + t * 45 * (0.6 + I)) % 532;
-    ctx.globalAlpha = (0.035 + 0.07 * I) * (1 + beat) * (1 - r / 532);
-    ctx.strokeStyle = `hsl(${(t * 40 + i * 25) % 360},100%,60%)`;
-    ctx.beginPath();
-    for (let k = 0; k <= sides; k++) {
-      const a = k / sides * TAU + t * 0.15 * (i % 2 ? 1 : -1) + i * 0.2;
-      const x = Math.cos(a) * r, y = Math.sin(a) * r;
-      k ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
-    }
-    ctx.stroke();
-  }
-  if (I > 0.25) {
-    ctx.lineWidth = 30;
-    for (let k = 0; k < 12; k++) {
-      const a = t * 0.25 + k * TAU / 12;
-      ctx.globalAlpha = 0.025 * I * (1 + beat);
-      ctx.strokeStyle = `hsl(${(t * 60 + k * 30) % 360},100%,60%)`;
-      ctx.beginPath(); ctx.moveTo(Math.cos(a) * 60, Math.sin(a) * 60); ctx.lineTo(Math.cos(a) * 700, Math.sin(a) * 700); ctx.stroke();
-    }
-  }
-  ctx.globalAlpha = 1;
-}
-// cuando la dopamina está alta el mundo se llena de nebulosas de color y destellos
-function drawBloom(D) {
-  if (D < 0.4) return;
-  const k = (D - 0.4) / 0.6, t = game.t;
-  for (let i = 0; i < 6; i++) {
-    const a = t * (0.2 + i * 0.05) + i * 1.05, r = 120 + 160 * Math.sin(t * 0.3 + i);
-    const x = Math.cos(a) * r, y = Math.sin(a * 1.3) * r;
-    const gr = ctx.createRadialGradient(x, y, 0, x, y, 230);
-    gr.addColorStop(0, `hsla(${(t * 30 + i * 60) % 360},100%,60%,${(0.17 * k * (1 + fx.beat * 0.6)).toFixed(3)})`);
-    gr.addColorStop(1, 'hsla(0,0%,0%,0)');
-    ctx.globalAlpha = 1; ctx.fillStyle = gr; ctx.fillRect(x - 230, y - 230, 460, 460);
-  }
-  ctx.lineCap = 'butt';
-  for (let i = 0; i < 46; i++) {
-    const a = i * 2.4 + t * (0.08 + (i % 5) * 0.03), rr = 60 + (i * 53) % 290;
-    const x = Math.cos(a) * rr, y = Math.sin(a * 0.9 + i) * rr, s = (2 + (i % 4)) * (0.6 + 0.6 * Math.sin(t * 4 + i)) * (0.5 + k);
-    ctx.globalAlpha = 0.7 * k; ctx.strokeStyle = `hsl(${(i * 37 + t * 60) % 360},100%,75%)`; ctx.lineWidth = 1.4;
-    ctx.beginPath(); ctx.moveTo(x - s * 2, y); ctx.lineTo(x + s * 2, y); ctx.moveTo(x, y - s * 2); ctx.lineTo(x, y + s * 2); ctx.stroke();
-  }
-  ctx.lineCap = 'round'; ctx.globalAlpha = 1;
-}
 function drawBalls() {
   const blink = phase === 'play' && run.inv > 0 && Math.floor(game.t * 16) % 2 === 0;
   for (const b of balls) {
     const t = b.trail, n = t.length / 2, R = b.r || BALL_R;
     for (let k = 1; k < n; k++) {
       ctx.globalAlpha = (k / n) * 0.55;
-      ctx.strokeStyle = `hsl(${b.hue},100%,55%)`;
+      ctx.strokeStyle = `hsl(${hz(hz(b.hue))},${sv(100)}%,55%)`;
       ctx.lineWidth = R * 1.6 * (k / n);
       ctx.beginPath(); ctx.moveTo(t[k * 2 - 2], t[k * 2 - 1]); ctx.lineTo(t[k * 2], t[k * 2 + 1]); ctx.stroke();
     }
     if (blink && mode !== SWARM) continue;
     ctx.globalAlpha = 0.25 + b.glow * 0.5;
-    ctx.fillStyle = `hsl(${b.hue},100%,55%)`;
+    ctx.fillStyle = `hsl(${hz(hz(b.hue))},${sv(100)}%,55%)`;
     ctx.beginPath(); ctx.arc(b.x, b.y, R * (2.4 + b.glow * 4), 0, TAU); ctx.fill();
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = (b.drill && b.dash > 0) || b.pierce > 0 ? '#ff9a3d' : `hsl(${b.hue},100%,56%)`;
+    ctx.fillStyle = (b.drill && b.dash > 0) || b.pierce > 0 ? '#ff9a3d' : `hsl(${hz(hz(b.hue))},${sv(100)}%,56%)`;
     ctx.beginPath(); ctx.arc(b.x, b.y, R, 0, TAU); ctx.fill();
     ctx.fillStyle = 'rgba(255,255,255,.55)';
     ctx.beginPath(); ctx.arc(b.x - R * 0.33, b.y - R * 0.33, R * 0.35, 0, TAU); ctx.fill();
@@ -1998,31 +2019,21 @@ function drawBalls() {
 
 function render() {
   if (W <= 0 || H <= 0 || !canvas.width || !darkC.width) return;   // ventana oculta o sin tamaño
-  const I = tripI();
-  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   ctx.globalCompositeOperation = 'source-over';
-  // con el "viaje" alto el fondo no se borra del todo: deja estelas
-  ctx.globalAlpha = phase === 'mutate' ? 0.25 : Math.max(0.42, 1 - 0.6 * I);
-  const D = game.dopa;
-  ctx.fillStyle = run && run.boss ? `hsl(${run.boss.hue},${Math.round(50 * D)}%,${(3 + 3 * (1 - D)).toFixed(1)}%)` : `hsl(240,${Math.round(25 * D)}%,${(3 + 3.5 * (1 - D)).toFixed(1)}%)`;
-  ctx.fillRect(0, 0, W, H);
+  ctx.globalAlpha = phase === 'mutate' ? 0.25 : 1;
+  drawBackdrop();
   ctx.globalAlpha = 1;
-  // gris y apagado cuando no pasa nada; colorido y brillante cuando consigues dopamina
-  canvas.style.filter = phase === 'mutate' ? '' :
-    `saturate(${(0.03 + 1.2 * Math.pow(D, 0.85)).toFixed(2)}) brightness(${(0.55 + 0.6 * Math.pow(D, 0.7)).toFixed(2)}) hue-rotate(${Math.round((game.t * 25 * I * D) % 360)}deg)`;
   if (!run || !mode) return;
 
-  const sx = (Math.random() - 0.5) * fx.shake, sy = (Math.random() - 0.5) * fx.shake;
+  const sx = (Math.random() - 0.5) * fx.shake * 0.6, sy = (Math.random() - 0.5) * fx.shake * 0.6;
   setWorld(sx, sy);
   ctx.globalCompositeOperation = 'lighter';
   ctx.lineCap = 'round';
-  drawPsyche(I);
-  drawBloom(D);
   mode.drawBack();
   for (const p of particles) {
     const a = Math.max(0, p.life / p.max);
     ctx.globalAlpha = a;
-    const col = p.gold ? `hsl(46,100%,${60 + a * 30}%)` : `hsl(${p.hue},95%,${55 + a * 30}%)`;
+    const col = p.gold ? `hsl(46,100%,${60 + a * 30}%)` : `hsl(${hz(hz(p.hue))},${sv(95)}%,${55 + a * 30}%)`;
     if (p.kind === 2) { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(p.x, p.y, p.len * a + 1, 0, TAU); ctx.fill(); continue; }
     ctx.strokeStyle = col;
     ctx.lineWidth = p.kind ? p.w : 2;
@@ -2036,7 +2047,7 @@ function render() {
     if (w.t < 0) continue;
     const k = w.t / 0.7;
     ctx.globalAlpha = (1 - k) * 0.9;
-    ctx.strokeStyle = w.gold ? 'hsl(46,100%,70%)' : `hsl(${w.hue},100%,70%)`;
+    ctx.strokeStyle = w.gold ? 'hsl(46,100%,70%)' : `hsl(${hz(hz(w.hue))},${sv(100)}%,70%)`;
     ctx.lineWidth = 14 * (1 - k) + 1;
     const grow = (1 - Math.pow(1 - k, 3)) * (w.cx !== undefined ? 90 : 420);
     ctx.beginPath(); ctx.arc(w.cx || 0, w.cy || 0, Math.max(1, w.implode ? w.R * (1 - k) : w.R + grow), 0, TAU); ctx.stroke();
@@ -2085,13 +2096,7 @@ function render() {
     ctx.beginPath(); ctx.arc(c.x, c.y, 4, 0, TAU); ctx.fill();
     ctx.globalAlpha = 0.3; ctx.beginPath(); ctx.arc(c.x, c.y, 10, 0, TAU); ctx.fill();
   }
-  if (fx.flash > 0) { ctx.globalAlpha = fx.flash * 0.35; ctx.fillStyle = `hsl(${fx.flashHue},100%,85%)`; ctx.fillRect(0, 0, W, H); }
-  const vignette = (alpha, color) => {
-    ctx.globalAlpha = alpha;
-    const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.max(W, H) * 0.72);
-    g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, color);
-    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-  };
+  if (fx.flash > 0) { ctx.globalAlpha = fx.flash * 0.22; ctx.fillStyle = `hsl(${hz(hz(fx.flashHue))},${sv(100)}%,85%)`; ctx.fillRect(0, 0, W, H); }
   if (fx.timeScale < 0.9) vignette((1 - fx.timeScale) * 0.6, '#000');
   if (fx.hurt > 0) vignette(fx.hurt * 0.9, '#ff0030');
   if (phase === 'play' && run.hp === 1) vignette(0.35 + 0.25 * Math.max(0, Math.sin(game.t * 5.7)), '#a0001c');
@@ -2118,27 +2123,32 @@ function renderRelics(fresh) {
       `<span class="i">${r.icon}</span><span class="t">${r.name}<small>${r.desc}</small></span>${n > 1 ? `<span class="x">x${n}</span>` : ''}</div>`;
   }).join('');
 }
+const HUDEL = {}, _hc = {};
+const hel = id => HUDEL[id] || (HUDEL[id] = document.querySelector(id));
+function hset(id, prop, val) {
+  const k = id + prop; if (_hc[k] === val) return; _hc[k] = val;
+  const e = hel(id); if (prop === 'text') e.textContent = val; else e.style[prop] = val;
+}
+function htog(id, cls, on) { const k = id + '.' + cls; if (_hc[k] === on) return; _hc[k] = on; hel(id).classList.toggle(cls, on); }
 function updateHud(rdt) {
   if (!run || !mode) return;
   const d = run.score - game.displayScore;
   game.displayScore += Math.abs(d) < 1 ? d : d * Math.min(1, rdt * 8);
-  $('#score').textContent = fmt(game.displayScore);
+  hset('#score', 'text', fmt(game.displayScore));
   const h = mode.hud();
-  $('#timerFill').style.width = clamp(h.fill, 0, 1) * 100 + '%';
-  $('#timerN').textContent = h.text;
-  $('#timer').classList.toggle('low', !!h.low && phase === 'play');
-  if (run.boss) $('#bossFill').style.width = (run.boss.alive === false ? 0 : (run.boss.hp / run.boss.maxHp)) * 100 + '%';
-  $('#hud').style.visibility = run.demo ? 'hidden' : 'visible';
-  const mb = $('#mutBar');
-  mb.style.display = run.demo ? 'none' : 'flex';
-  $('#mutFill').style.height = (game.mut * 100).toFixed(1) + '%';
-  $('#mutPct').textContent = Math.floor(game.mut * 100) + '%';
-  mb.classList.toggle('near', game.mut >= 0.8 && game.mut < 1);
-  mb.classList.toggle('ready', game.mut >= 1);
-  $('#mutLab').textContent = game.mut >= 1 ? 'MUTANDO…' : 'MUTACIÓN';
-  $('#mid').style.filter = `saturate(${(0.15 + 0.85 * game.dopa).toFixed(2)})`;
-  $('#feverFill').style.width = (game.frenzy > 0 ? game.frenzy / 7 : game.fever) * 100 + '%';
-  $('#fever').classList.toggle('on', game.frenzy > 0);
+  hset('#timerFill', 'width', (clamp(h.fill, 0, 1) * 100).toFixed(1) + '%');
+  hset('#timerN', 'text', h.text);
+  htog('#timer', 'low', !!h.low && phase === 'play');
+  if (run.boss) hset('#bossFill', 'width', ((run.boss.alive === false ? 0 : run.boss.hp / run.boss.maxHp) * 100).toFixed(1) + '%');
+  hset('#hud', 'visibility', run.demo ? 'hidden' : 'visible');
+  hset('#mutBar', 'display', run.demo ? 'none' : 'flex');
+  hset('#mutFill', 'height', (game.mut * 100).toFixed(1) + '%');
+  hset('#mutPct', 'text', Math.floor(game.mut * 100) + '%');
+  htog('#mutBar', 'near', game.mut >= 0.8 && game.mut < 1);
+  htog('#mutBar', 'ready', game.mut >= 1);
+  hset('#mutLab', 'text', game.mut >= 1 ? 'MUTANDO…' : 'MUTACIÓN');
+  hset('#feverFill', 'width', ((game.frenzy > 0 ? game.frenzy / 7 : game.fever) * 100).toFixed(1) + '%');
+  htog('#fever', 'on', game.frenzy > 0);
 }
 
 // ---------------------------------------------------------------- cartas
@@ -2333,16 +2343,19 @@ new ResizeObserver(resize).observe(canvas);
 
 // ---------------------------------------------------------------- arranque
 load();
-resize();
+{ let t0 = IS_MOBILE ? 2 : 0; try { const s = localStorage.getItem('dopamina_q'); if (s !== null) t0 = +s; } catch (e) { } setTier(t0); }
 showMenu();
 
-let last = performance.now();
+let last = performance.now(), hudAcc = 0;
 function frame(now) {
-  const rdt = Math.min(0.05, (now - last) / 1000);
+  const t0 = performance.now(), raw = now - last;
+  const rdt = Math.min(0.05, raw / 1000);
   last = now;
   update(rdt);
   render();
-  updateHud(rdt);
+  hudAcc += rdt;
+  if (hudAcc >= (Q.tier >= 2 ? 1 / 20 : 1 / 30)) { updateHud(hudAcc); hudAcc = 0; }
+  adaptQuality(raw, performance.now() - t0);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
